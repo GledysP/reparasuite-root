@@ -1,0 +1,6 @@
+[submodule "reparasuite-backoffice"]
+	path = reparasuite-backoffice
+	url = https://github.com/GledysP/reparasuite-backoffice.git
+[submodule "reparasuite-api"]
+	path = reparasuite-api
+	url = https://github.com/GledysP/reparasuite-api.git
