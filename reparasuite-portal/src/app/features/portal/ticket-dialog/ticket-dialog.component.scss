@@ -1,0 +1,41 @@
+.w100 { width: 100%; }
+
+.hint {
+  margin-top: 8px;
+  font-size: 12px;
+  color: #6c7785;
+}
+
+.view {
+  .row {
+    display: grid;
+    grid-template-columns: 90px 1fr;
+    gap: 10px;
+    margin-bottom: 8px;
+  }
+
+  .label {
+    font-size: 12px;
+    color: #6c7785;
+  }
+
+  .value {
+    font-weight: 600;
+    color: #111827;
+  }
+
+  .block {
+    white-space: pre-wrap;
+    font-weight: 500;
+  }
+
+  .divider {
+    margin: 12px 0;
+  }
+
+  .muted {
+    color: #6c7785;
+    font-size: 13px;
+    line-height: 1.4;
+  }
+}

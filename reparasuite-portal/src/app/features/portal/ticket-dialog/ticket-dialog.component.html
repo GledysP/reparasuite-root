@@ -1,0 +1,59 @@
+<h2 mat-dialog-title>
+  <ng-container *ngIf="isNew; else viewTitle">Nuevo ticket</ng-container>
+  <ng-template #viewTitle>Ticket: {{ ticket.asunto }}</ng-template>
+</h2>
+
+<div mat-dialog-content>
+  <ng-container *ngIf="isNew; else viewMode">
+    <form [formGroup]="newForm">
+      <mat-form-field appearance="outline" class="w100">
+        <mat-label>Asunto</mat-label>
+        <input matInput formControlName="asunto" />
+      </mat-form-field>
+
+      <mat-form-field appearance="outline" class="w100">
+        <mat-label>Descripción</mat-label>
+        <textarea matInput rows="5" formControlName="descripcion"></textarea>
+      </mat-form-field>
+
+      <div class="hint">
+        Describe el problema (marca/modelo, si enciende, ruidos, etc.).
+      </div>
+    </form>
+  </ng-container>
+
+  <ng-template #viewMode>
+    <div class="view">
+      <div class="row">
+        <div class="label">Estado</div>
+        <div class="value">{{ ticket.estado }}</div>
+      </div>
+
+      <div class="row">
+        <div class="label">Creado</div>
+        <div class="value">{{ ticket.createdAt | date:'short' }}</div>
+      </div>
+
+      <div class="divider"><mat-divider></mat-divider></div>
+
+      <div class="label">Descripción</div>
+      <div class="value block">{{ ticket.descripcion }}</div>
+
+      <div class="divider"><mat-divider></mat-divider></div>
+
+      <div class="muted">
+        Este ticket es la solicitud inicial. El seguimiento principal se hace en la orden (OT) cuando el taller la cree.
+      </div>
+    </div>
+  </ng-template>
+</div>
+
+<div mat-dialog-actions align="end">
+  <button mat-button (click)="close(false)">Cerrar</button>
+
+  <ng-container *ngIf="isNew">
+    <button mat-flat-button color="primary" (click)="create()" [disabled]="newForm.invalid || busy()">
+      Crear ticket
+    </button>
+  </ng-container>
+</div>

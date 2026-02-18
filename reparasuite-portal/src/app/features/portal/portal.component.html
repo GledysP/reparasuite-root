@@ -1,0 +1,378 @@
+<mat-toolbar class="rs-topbar">
+  <div class="brand">
+    <span class="logo">ReparaSuite</span>
+    <span class="subtitle">Portal Cliente</span>
+  </div>
+
+  <span class="spacer"></span>
+
+  <button mat-button (click)="refreshAll()">
+    <mat-icon>refresh</mat-icon>
+    Actualizar
+  </button>
+
+  <button mat-button (click)="logout()">
+    <mat-icon>logout</mat-icon>
+    Salir
+  </button>
+</mat-toolbar>
+
+<mat-progress-bar *ngIf="loading()" mode="indeterminate"></mat-progress-bar>
+
+<div class="rs-page">
+  <div class="rs-shell">
+
+    <!-- LEFT -->
+    <aside class="side">
+      <!-- Mis órdenes -->
+      <mat-card class="rs-card">
+        <mat-card-header>
+          <mat-card-title class="rs-title">
+            <mat-icon>assignment</mat-icon>
+            Mis órdenes
+          </mat-card-title>
+          <mat-card-subtitle>Selecciona una orden para ver el seguimiento</mat-card-subtitle>
+        </mat-card-header>
+
+        <mat-card-content>
+          <ng-container *ngIf="ots().length; else emptyOts">
+            <div class="list">
+              <button
+                type="button"
+                class="list-item"
+                *ngFor="let ot of ots(); trackBy: trackById"
+                [class.active]="selectedOtCodigo() === ot.codigo"
+                (click)="selectOt(ot)"
+              >
+                <div class="row">
+                  <div class="strong">{{ ot.codigo }}</div>
+                  <div class="muted">{{ ot.updatedAt | date:'short' }}</div>
+                </div>
+                <div class="row">
+                  <span class="chip">{{ ot.tipo }}</span>
+                  <span class="chip soft">{{ ot.estado }}</span>
+                </div>
+              </button>
+            </div>
+          </ng-container>
+
+          <ng-template #emptyOts>
+            <div class="empty">
+              <div class="empty-title">Aún no tienes órdenes</div>
+              <div class="empty-sub">Crea un ticket para iniciar una solicitud.</div>
+            </div>
+          </ng-template>
+        </mat-card-content>
+      </mat-card>
+
+      <!-- Tickets -->
+      <mat-card class="rs-card mt12">
+        <mat-card-header class="header-actions">
+          <div>
+            <mat-card-title class="rs-title">
+              <mat-icon>support_agent</mat-icon>
+              Tickets
+            </mat-card-title>
+            <mat-card-subtitle>Solicitud inicial. El seguimiento será en tu OT.</mat-card-subtitle>
+          </div>
+
+          <div class="header-buttons">
+            <button mat-stroked-button class="btn-icon" (click)="loadTickets()">
+              <mat-icon>refresh</mat-icon>
+            </button>
+
+            <button mat-flat-button class="btn-primary" (click)="openNewTicket()">
+              <mat-icon>add</mat-icon>
+              Nuevo
+            </button>
+          </div>
+        </mat-card-header>
+
+        <mat-card-content>
+          <ng-container *ngIf="tickets().length; else emptyTickets">
+            <div class="list">
+              <button
+                type="button"
+                class="list-item"
+                *ngFor="let t of tickets(); trackBy: trackById"
+                (click)="openTicket(t.id)"
+              >
+                <div class="row">
+                  <div class="strong">{{ t.asunto }}</div>
+                  <div class="muted">{{ t.updatedAt | date:'short' }}</div>
+                </div>
+                <div class="row">
+                  <span class="chip soft">{{ t.estado }}</span>
+                </div>
+              </button>
+            </div>
+          </ng-container>
+
+          <ng-template #emptyTickets>
+            <div class="empty">
+              <div class="empty-title">No hay tickets</div>
+              <div class="empty-sub">Crea uno si necesitas contactar al taller.</div>
+            </div>
+          </ng-template>
+        </mat-card-content>
+      </mat-card>
+
+      <!-- Timeline en sidebar (no debajo del chat) -->
+      <mat-card class="rs-card mt12" *ngIf="selectedOtDetalle() as ot">
+        <mat-card-header>
+          <mat-card-title class="rs-mini">
+            <mat-icon>timeline</mat-icon>
+            Actividad
+          </mat-card-title>
+        </mat-card-header>
+
+        <mat-card-content>
+          <ng-container *ngIf="ot.historial.length; else emptyHist">
+            <div class="timeline">
+              <div class="tl" *ngFor="let h of ot.historial; trackBy: trackById">
+                <div class="dot"></div>
+                <div class="tl-body">
+                  <div class="strong">{{ h.descripcion }}</div>
+                  <div class="muted small">{{ h.fecha | date:'short' }} · {{ h.usuario?.nombre || 'Sistema' }}</div>
+                </div>
+              </div>
+            </div>
+          </ng-container>
+
+          <ng-template #emptyHist>
+            <div class="muted">Sin actividad todavía.</div>
+          </ng-template>
+        </mat-card-content>
+      </mat-card>
+    </aside>
+
+    <!-- RIGHT -->
+    <main class="main">
+      <ng-container *ngIf="selectedOtDetalle() as ot; else welcome">
+
+        <!-- Header OT -->
+        <mat-card class="rs-card">
+          <mat-card-header class="header-actions">
+            <div>
+              <div class="ot-title">{{ ot.codigo }}</div>
+              <div class="ot-sub">
+                <span class="chip status">{{ ot.estado }}</span>
+                <span class="muted">Actualizada: {{ ot.updatedAt | date:'short' }}</span>
+              </div>
+              <div class="ot-chips">
+                <span class="chip">{{ ot.tipo }}</span>
+                <span class="chip">{{ ot.prioridad }}</span>
+                <span class="chip soft" *ngIf="ot.direccion">{{ ot.direccion }}</span>
+              </div>
+            </div>
+
+            <button mat-stroked-button (click)="refreshDetalle()">
+              <mat-icon>refresh</mat-icon>
+              Actualizar detalle
+            </button>
+          </mat-card-header>
+
+          <mat-card-content>
+            <div class="kv">
+              <div class="k">Descripción</div>
+              <div class="v">{{ ot.descripcion || '—' }}</div>
+            </div>
+          </mat-card-content>
+        </mat-card>
+
+        <!-- Two columns inside main -->
+        <div class="main-grid mt12">
+
+          <!-- Acciones -->
+          <mat-card class="rs-card">
+            <mat-card-header>
+              <mat-card-title class="rs-mini">
+                <mat-icon>task_alt</mat-icon>
+                Acciones
+              </mat-card-title>
+              <mat-card-subtitle>Presupuesto · Pago · Citas</mat-card-subtitle>
+            </mat-card-header>
+
+            <mat-card-content class="actions">
+              <!-- Presupuesto -->
+              <section class="box">
+                <div class="box-title"><mat-icon>request_quote</mat-icon> Presupuesto</div>
+
+                <ng-container *ngIf="ot.presupuesto; else noPres">
+                  <div class="pill">{{ ot.presupuesto.estado }}</div>
+                  <div class="price">{{ ot.presupuesto.importe | number:'1.2-2' }} €</div>
+                  <div class="muted">{{ ot.presupuesto.detalle }}</div>
+
+                  <ng-container *ngIf="ot.presupuesto.estado === 'ENVIADO'">
+                    <mat-checkbox [checked]="aceptoCheck()" (change)="aceptoCheck.set(!aceptoCheck())">
+                      Acepto el presupuesto
+                    </mat-checkbox>
+
+                    <div class="row gap">
+                      <button mat-flat-button class="btn-primary"
+                        (click)="aceptar(ot.id)"
+                        [disabled]="!aceptoCheck() || actionBusy()">
+                        Aceptar
+                      </button>
+
+                      <button mat-stroked-button
+                        (click)="rechazar(ot.id)"
+                        [disabled]="actionBusy()">
+                        Rechazar
+                      </button>
+                    </div>
+                  </ng-container>
+                </ng-container>
+
+                <ng-template #noPres>
+                  <div class="muted">Aún no hay presupuesto.</div>
+                </ng-template>
+              </section>
+
+              <!-- Pago -->
+              <section class="box">
+                <div class="box-title"><mat-icon>payments</mat-icon> Pago</div>
+
+                <div class="muted small">
+                  Transferencia (MVP):<br />
+                  Beneficiario: ReparaSuite<br />
+                  IBAN: ES00 0000 0000 0000 0000 0000<br />
+                  Concepto: {{ ot.codigo }}
+                </div>
+
+                <div class="row gap mt8">
+                  <button mat-stroked-button (click)="marcarTransferencia(ot.id)" [disabled]="actionBusy()">
+                    He pagado por transferencia
+                  </button>
+                </div>
+
+                <div class="row gap mt8">
+                  <label class="upload-btn">
+                    <input type="file" hidden accept="image/*,.pdf" (change)="onPagoFileSelected($event)" />
+                    <mat-icon>upload</mat-icon>
+                    Subir comprobante
+                  </label>
+
+                  <button mat-flat-button class="btn-primary"
+                    (click)="uploadComprobante(ot.id)"
+                    [disabled]="!pagoFile() || actionBusy()">
+                    Enviar
+                  </button>
+                </div>
+
+                <div class="muted small mt8" *ngIf="ot.pago">
+                  <b>Estado:</b> {{ ot.pago.estado }}
+                </div>
+              </section>
+
+              <!-- Citas (datepicker + time) -->
+              <section class="box">
+                <div class="box-title"><mat-icon>event</mat-icon> Citas</div>
+
+                <div class="cita-grid">
+                  <mat-form-field appearance="outline">
+                    <mat-label>Fecha inicio</mat-label>
+                    <input matInput [matDatepicker]="dpInicio" [value]="citaInicioFecha()" (dateChange)="citaInicioFecha.set($event.value)" />
+                    <mat-datepicker-toggle matSuffix [for]="dpInicio"></mat-datepicker-toggle>
+                    <mat-datepicker #dpInicio></mat-datepicker>
+                  </mat-form-field>
+
+                  <mat-form-field appearance="outline">
+                    <mat-label>Hora inicio</mat-label>
+                    <input matInput type="time" [value]="citaInicioHora()" (change)="citaInicioHora.set(($any($event.target).value))" />
+                  </mat-form-field>
+
+                  <mat-form-field appearance="outline">
+                    <mat-label>Fecha fin</mat-label>
+                    <input matInput [matDatepicker]="dpFin" [value]="citaFinFecha()" (dateChange)="citaFinFecha.set($event.value)" />
+                    <mat-datepicker-toggle matSuffix [for]="dpFin"></mat-datepicker-toggle>
+                    <mat-datepicker #dpFin></mat-datepicker>
+                  </mat-form-field>
+
+                  <mat-form-field appearance="outline">
+                    <mat-label>Hora fin</mat-label>
+                    <input matInput type="time" [value]="citaFinHora()" (change)="citaFinHora.set(($any($event.target).value))" />
+                  </mat-form-field>
+                </div>
+
+                <div class="row gap">
+                  <button mat-stroked-button (click)="reservarCita(ot.id)" [disabled]="actionBusy()">
+                    Reservar
+                  </button>
+
+                  <button mat-stroked-button (click)="reprogramarPrimera(ot)" [disabled]="!ot.citas.length || actionBusy()">
+                    Reprogramar primera
+                  </button>
+                </div>
+
+                <div class="muted small mt8" *ngIf="!ot.citas.length">No hay citas.</div>
+              </section>
+            </mat-card-content>
+          </mat-card>
+
+          <!-- Chat (siempre visible) -->
+          <mat-card class="rs-card chat-card">
+            <mat-card-header class="header-actions">
+              <mat-card-title class="rs-mini">
+                <mat-icon>chat</mat-icon>
+                Mensajes con el taller
+              </mat-card-title>
+
+              <button mat-button (click)="refreshDetalle()">
+                <mat-icon>refresh</mat-icon>
+                Actualizar
+              </button>
+            </mat-card-header>
+
+            <mat-card-content class="chat">
+              <div class="chat-list" *ngIf="ot.mensajes.length; else emptyChat">
+                <div
+                  class="bubble"
+                  *ngFor="let m of ot.mensajes; trackBy: trackById"
+                  [class.me]="isClienteMsg(m)"
+                >
+                  <div class="meta">
+                    <div class="name">{{ isClienteMsg(m) ? 'Tú' : m.remitenteNombre }}</div>
+                    <div class="time">{{ m.createdAt | date:'short' }}</div>
+                  </div>
+                  <div class="text">{{ m.contenido }}</div>
+                </div>
+              </div>
+
+              <ng-template #emptyChat>
+                <div class="muted">Aún no hay mensajes. Escribe abajo para iniciar.</div>
+              </ng-template>
+
+              <div class="chat-input">
+                <mat-form-field appearance="outline" class="w100">
+                  <mat-label>Escribe un mensaje</mat-label>
+                  <textarea matInput rows="2" [formControl]="msgForm.controls.contenido"></textarea>
+                </mat-form-field>
+
+                <button mat-flat-button class="btn-primary"
+                  (click)="sendMsgOt(ot.id)"
+                  [disabled]="msgForm.invalid || actionBusy()">
+                  Enviar
+                </button>
+              </div>
+            </mat-card-content>
+          </mat-card>
+
+        </div>
+      </ng-container>
+
+      <ng-template #welcome>
+        <mat-card class="rs-card">
+          <mat-card-content class="empty-right">
+            <div class="empty-title">Bienvenido</div>
+            <div class="empty-sub">
+              Crea un <b>ticket</b> para iniciar tu solicitud.
+              Cuando el taller lo procese, aparecerá una <b>orden</b> con seguimiento.
+            </div>
+          </mat-card-content>
+        </mat-card>
+      </ng-template>
+
+    </main>
+  </div>
+</div>
