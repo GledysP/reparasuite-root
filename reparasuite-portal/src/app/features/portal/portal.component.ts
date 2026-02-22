@@ -30,7 +30,8 @@ import {
   OtDetalleDto,
   TicketListaItemDto,
   MensajeDto,
-  HistorialItemDto
+  HistorialItemDto,
+  CitaDto
 } from '../../core/models';
 
 import { TicketDialogComponent } from './ticket-dialog/ticket-dialog.component';
@@ -76,15 +77,15 @@ export class PortalComponent {
     contenido: ['', [Validators.required, Validators.minLength(1)]]
   });
 
-  // Citas (solo inicio visible)
+  // Citas (ya no se usan en UI cliente, se dejan por compatibilidad)
   citaInicioFecha = signal<Date | null>(null);
   citaInicioHora = signal<string>(''); // "HH:mm"
-  citaDuracionMinutos = 60; // fin automático para compatibilidad
+  citaDuracionMinutos = 60;
 
   // Pago comprobante
   pagoFile = signal<File | null>(null);
 
-  // Tabs Gestión
+  // Tabs Gestión (0 Presupuesto, 1 Citas, 2 Pago)
   gestionTabIndex = signal(0);
 
   // Stepper minimal
@@ -115,6 +116,28 @@ export class PortalComponent {
     return Math.max(0, this.steps.findIndex(s => s.key === key));
   });
 
+  // ✅ Próxima cita (ordenada)
+  nextCita = computed<CitaDto | null>(() => {
+    const ot = this.selectedOtDetalle();
+    const citas = ot?.citas ?? [];
+    if (!citas.length) return null;
+    const sorted = [...citas].sort((a, b) => (a.inicio || '').localeCompare(b.inicio || ''));
+    return sorted[0] ?? null;
+  });
+
+  // ✅ URL segura para template strict
+  comprobanteHref = computed<string | null>(() => {
+    const ot = this.selectedOtDetalle();
+    const url = ot?.pago?.comprobanteUrl ?? null;
+    if (!url) return null;
+
+    if (/^https?:\/\//i.test(url)) return url;
+
+    const base = (this.apiBase || '').replace(/\/$/, '');
+    const path = url.startsWith('/') ? url : `/${url}`;
+    return `${base}${path}`;
+  });
+
   constructor(
     private auth: AuthService,
     private otService: OtService,
@@ -126,9 +149,6 @@ export class PortalComponent {
     this.refreshAll();
   }
 
-  // -----------------------
-  // Helpers UI
-  // -----------------------
   trackById(_: number, item: any) {
     return item?.id ?? item?.codigo ?? item?.fecha ?? item?.createdAt ?? _;
   }
@@ -157,9 +177,6 @@ export class PortalComponent {
     return 'history';
   }
 
-  // -----------------------
-  // Carga datos
-  // -----------------------
   async refreshAll() {
     await Promise.all([this.loadOts(), this.loadTickets()]);
   }
@@ -205,12 +222,10 @@ export class PortalComponent {
       this.selectedOtDetalle.set(d);
       this.aceptoCheck.set(false);
 
-      // reset cita fields
+      if (d?.citas?.length) this.gestionTabIndex.set(1);
+
       this.citaInicioFecha.set(null);
       this.citaInicioHora.set('');
-
-      // reset tab a Presupuesto
-      this.gestionTabIndex.set(0);
     } catch {
       this.snack.open('No se pudo cargar el detalle de la OT', 'OK', { duration: 2500 });
     } finally {
@@ -321,6 +336,7 @@ export class PortalComponent {
       await this.otService.subirComprobantePago(otId, f);
       this.pagoFile.set(null);
       await this.loadDetalle(otId);
+      this.gestionTabIndex.set(2);
       this.snack.open('Comprobante subido', 'OK', { duration: 1500 });
     } catch {
       this.snack.open('Error al subir comprobante', 'OK', { duration: 2500 });
@@ -330,7 +346,7 @@ export class PortalComponent {
   }
 
   // -----------------------
-  // Citas (solo inicio visible, fin automático)
+  // Citas (ya no se usan en UI cliente, se dejan por compatibilidad)
   // -----------------------
   async reservarCita(otId: string) {
     const inicio = this.combineDateTimeToIso(this.citaInicioFecha(), this.citaInicioHora());
@@ -345,6 +361,7 @@ export class PortalComponent {
     try {
       await this.otService.reservarCita(otId, inicio, fin);
       await this.loadDetalle(otId);
+      this.gestionTabIndex.set(1);
       this.snack.open('Cita reservada', 'OK', { duration: 1500 });
     } catch {
       this.snack.open('No se pudo reservar la cita', 'OK', { duration: 2500 });
@@ -372,6 +389,7 @@ export class PortalComponent {
     try {
       await this.otService.reprogramarCita(first.id, inicio, fin);
       await this.loadDetalle(ot.id);
+      this.gestionTabIndex.set(1);
       this.snack.open('Cita reprogramada', 'OK', { duration: 1500 });
     } catch {
       this.snack.open('No se pudo reprogramar', 'OK', { duration: 2500 });

@@ -492,3 +492,38 @@ $rs-muted: #6c7785;
   font-weight: 600;
 }
 .seg.active .lbl { color: $rs-text; }
+
+/* =========================
+   ✅ AÑADIDOS: Citas + Link
+   ========================= */
+.cita-summary {
+  border: 1px solid $rs-border;
+  border-radius: 14px;
+  background: #fff;
+  padding: 12px;
+  margin-bottom: 10px;
+}
+
+.cita-summary-title {
+  font-size: 12px;
+  color: $rs-muted;
+  margin-bottom: 6px;
+}
+
+.cita-summary-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.link {
+  color: $rs-primary;
+  font-weight: 800;
+  text-decoration: none;
+}
+.link:hover {
+  text-decoration: underline;
+}
+
+.mb8 { margin-bottom: 8px; }

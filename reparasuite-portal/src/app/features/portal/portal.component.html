@@ -22,7 +22,7 @@
 <div class="rs-page">
   <div class="rs-shell">
 
-    <!-- FILA 1 / Card A: Tickets + OTs (todo junto, sin redundancias) -->
+    <!-- FILA 1 / Card A: Tickets + selector OT -->
     <mat-card class="rs-card tickets-card">
       <mat-card-header class="header-actions">
         <div>
@@ -88,7 +88,6 @@
 
         <div class="divider mt12"><mat-divider></mat-divider></div>
 
-        <!-- “Solicitud / descripción” vive aquí (no en el header OT) -->
         <div class="ot-hint" *ngIf="selectedOtDetalle() as ot">
           <div class="muted small">Solicitud</div>
           <div class="strong clamp2">{{ ot.descripcion || '—' }}</div>
@@ -122,7 +121,7 @@
       </mat-card-content>
     </mat-card>
 
-    <!-- FILA 1 / Card B: Header OT (SOLO identidad + stepper) -->
+    <!-- FILA 1 / Card B: Header OT -->
     <mat-card class="rs-card header-card" *ngIf="selectedOtDetalle() as ot; else welcomeHeader">
       <mat-card-header class="header-actions header-tight">
         <div>
@@ -202,7 +201,7 @@
               </div>
               <div class="audit-body">
                 <div class="strong">{{ h.descripcion }}</div>
-                <div class="muted small">{{ h.fecha | date:'short' }} · {{ h.usuario?.nombre || 'Sistema' }}</div>
+                <div class="muted small">{{ h.fecha | date:'short' }} · {{ h.usuario.nombre || 'Sistema' }}</div>
               </div>
             </div>
           </div>
@@ -273,47 +272,32 @@
             </div>
           </mat-tab>
 
-          <!-- 2) Citas -->
+          <!-- 2) Citas (MVP: solo visualización cliente) -->
           <mat-tab label="Citas">
             <div class="tab-body">
-              <div class="cita-grid cita-grid--2">
-                <mat-form-field appearance="outline">
-                  <mat-label>Fecha</mat-label>
-                  <input
-                    matInput
-                    [matDatepicker]="dpInicio"
-                    [value]="citaInicioFecha()"
-                    (dateChange)="citaInicioFecha.set($event.value)"
-                  />
-                  <mat-datepicker-toggle matSuffix [for]="dpInicio"></mat-datepicker-toggle>
-                  <mat-datepicker #dpInicio></mat-datepicker>
-                </mat-form-field>
+              <ng-container *ngIf="nextCita() as c; else noCitaPortal">
+                <div class="cita-summary">
+                  <div class="cita-summary-title">Próxima cita</div>
+                  <div class="cita-summary-row">
+                    <div class="strong">
+                      {{ c.inicio | date:'fullDate' }} · {{ c.inicio | date:'HH:mm' }}
+                    </div>
+                    <span class="chip soft">{{ c.estado }}</span>
+                  </div>
+                  <div class="muted small">Fin: {{ c.fin | date:'HH:mm' }}</div>
+                </div>
 
-                <mat-form-field appearance="outline">
-                  <mat-label>Hora</mat-label>
-                  <input
-                    matInput
-                    type="time"
-                    [value]="citaInicioHora()"
-                    (change)="citaInicioHora.set(($any($event.target).value))"
-                  />
-                </mat-form-field>
-              </div>
+                <div class="muted small mt8">
+                  Si necesitas cambiar la fecha u hora, envíanos un mensaje en el chat de esta orden y te ayudamos a reprogramarla.
+                </div>
+              </ng-container>
 
-              <div class="row gap">
-                <button mat-flat-button class="btn-primary" (click)="reservarCita(ot.id)" [disabled]="actionBusy()">
-                  Reservar
-                </button>
-
-                <button mat-stroked-button (click)="reprogramarPrimera(ot)" [disabled]="!ot.citas.length || actionBusy()">
-                  Reprogramar primera
-                </button>
-              </div>
-
-              <div class="muted small mt8" *ngIf="!ot.citas.length">No hay citas.</div>
-              <div class="muted tiny mt8">
-                * La duración se establece automáticamente ({{ citaDuracionMinutos }} min) para mantener compatibilidad.
-              </div>
+              <ng-template #noCitaPortal>
+                <div class="muted small mb8">Aún no hay cita programada.</div>
+                <div class="muted small">
+                  El taller programará una cita y la verás aquí. Si necesitas coordinar horario, usa el chat.
+                </div>
+              </ng-template>
             </div>
           </mat-tab>
 
@@ -354,6 +338,15 @@
                 </button>
               </div>
 
+              <ng-container *ngIf="comprobanteHref() as href">
+                <div class="mt10">
+                  <div class="muted small"><b>Comprobante:</b></div>
+                  <a class="link" [href]="href" target="_blank" rel="noopener">
+                    Ver comprobante
+                  </a>
+                </div>
+              </ng-container>
+
               <div class="muted small mt8" *ngIf="ot.pago">
                 <b>Estado:</b> {{ ot.pago.estado }}
               </div>
@@ -363,7 +356,7 @@
       </mat-card-content>
     </mat-card>
 
-    <!-- FILA 2 / Card 3: Mensajes (alto) -->
+    <!-- FILA 2 / Card 3: Mensajes -->
     <mat-card class="rs-card chat-card" *ngIf="selectedOtDetalle() as ot">
       <mat-card-header class="header-actions">
         <mat-card-title class="rs-mini">
