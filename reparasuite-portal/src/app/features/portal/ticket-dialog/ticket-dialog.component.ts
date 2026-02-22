@@ -5,67 +5,64 @@ import { MatButtonModule } from '@angular/material/button';
 import { MatDividerModule } from '@angular/material/divider';
 import { MatFormFieldModule } from '@angular/material/form-field';
 import { MatInputModule } from '@angular/material/input';
-import { ReactiveFormsModule, FormBuilder, Validators } from '@angular/forms';
+import { MatIconModule } from '@angular/material/icon';
+import { ReactiveFormsModule, FormBuilder, FormGroup, Validators } from '@angular/forms';
 import { MatSnackBar, MatSnackBarModule } from '@angular/material/snack-bar';
 
 import { TicketsService } from '../../../core/tickets.service';
 import { TicketDetalleDto } from '../../../core/models';
 
-type DataNew = { mode: 'new' };
-type DataView = { mode: 'view'; ticket: TicketDetalleDto };
-type Data = DataNew | DataView;
-
 @Component({
   selector: 'app-ticket-dialog',
   standalone: true,
   imports: [
-    CommonModule,
-    MatDialogModule, MatButtonModule, MatDividerModule,
-    MatFormFieldModule, MatInputModule,
-    ReactiveFormsModule,
-    MatSnackBarModule
+    CommonModule, MatDialogModule, MatButtonModule, MatDividerModule,
+    MatFormFieldModule, MatInputModule, MatIconModule,
+    ReactiveFormsModule, MatSnackBarModule
   ],
   templateUrl: './ticket-dialog.component.html',
   styleUrls: ['./ticket-dialog.component.scss']
 })
 export class TicketDialogComponent {
+  // Inyectamos los servicios
   private fb = inject(FormBuilder);
-  busy = signal(false);
+  private ticketsService = inject(TicketsService);
+  private snack = inject(MatSnackBar);
+  private dialogRef = inject(MatDialogRef<TicketDialogComponent>);
 
-  newForm = this.fb.group({
-    asunto: ['', [Validators.required, Validators.minLength(2)]],
-    descripcion: ['', [Validators.required, Validators.minLength(5)]]
-  });
+  loading = signal(false);
+  
+  // Declaramos el formulario sin inicializarlo aquí para evitar el error TS2729
+  newForm: FormGroup;
 
-  constructor(
-    @Inject(MAT_DIALOG_DATA) public data: Data,
-    private dialogRef: MatDialogRef<TicketDialogComponent>,
-    private tickets: TicketsService,
-    private snack: MatSnackBar
-  ) {}
-
-  get isNew(): boolean { return this.data.mode === 'new'; }
-  get isView(): boolean { return this.data.mode === 'view'; }
-
-  get ticket(): TicketDetalleDto {
-    if (this.data.mode !== 'view') throw new Error('Ticket no disponible en modo new');
-    return this.data.ticket;
+  constructor(@Inject(MAT_DIALOG_DATA) public data: { mode: 'new' | 'view', ticket?: TicketDetalleDto }) {
+    // Inicializamos el formulario dentro del constructor
+    this.newForm = this.fb.group({
+      asunto: ['', [Validators.required, Validators.minLength(3)]],
+      descripcion: ['', [Validators.required, Validators.minLength(10)]]
+    });
   }
 
-  close(ok: boolean) { this.dialogRef.close(ok); }
+  get isNew() { return this.data.mode === 'new'; }
+  get isView() { return this.data.mode === 'view'; }
+  get ticket() { return this.data.ticket; }
 
-  async create() {
+  close(res = false) {
+    this.dialogRef.close(res);
+  }
+
+  async crear() {
     if (this.newForm.invalid) return;
-
-    this.busy.set(true);
+    this.loading.set(true);
     try {
-      await this.tickets.crear(this.newForm.value.asunto!, this.newForm.value.descripcion!);
-      this.snack.open('Ticket creado', 'OK', { duration: 1500 });
+      const val = this.newForm.value;
+      await this.ticketsService.crear(val.asunto!, val.descripcion!);
+      this.snack.open('Ticket creado correctamente', 'OK', { duration: 2000 });
       this.close(true);
-    } catch {
-      this.snack.open('No se pudo crear el ticket', 'OK', { duration: 2500 });
+    } catch (err) {
+      this.snack.open('Error al crear ticket', 'OK');
     } finally {
-      this.busy.set(false);
+      this.loading.set(false);
     }
   }
 }

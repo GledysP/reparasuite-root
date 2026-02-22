@@ -1,59 +1,47 @@
 <h2 mat-dialog-title>
-  <ng-container *ngIf="isNew; else viewTitle">Nuevo ticket</ng-container>
-  <ng-template #viewTitle>Ticket: {{ ticket.asunto }}</ng-template>
+  {{ isNew ? 'Nueva Solicitud de Soporte' : 'Detalle de Ticket' }}
 </h2>
 
-<div mat-dialog-content>
-  <ng-container *ngIf="isNew; else viewMode">
-    <form [formGroup]="newForm">
-      <mat-form-field appearance="outline" class="w100">
-        <mat-label>Asunto</mat-label>
-        <input matInput formControlName="asunto" />
-      </mat-form-field>
+<mat-dialog-content>
+  <form *ngIf="isNew" [formGroup]="newForm" class="pt10">
+    <mat-form-field appearance="outline" class="w100">
+      <mat-label>Asunto / Equipo</mat-label>
+      <input matInput formControlName="asunto" placeholder="Equipo: TV / Laptop / etc">
+    </mat-form-field>
 
-      <mat-form-field appearance="outline" class="w100">
-        <mat-label>Descripción</mat-label>
-        <textarea matInput rows="5" formControlName="descripcion"></textarea>
-      </mat-form-field>
+    <mat-form-field appearance="outline" class="w100">
+      <mat-label>Descripción detalladaaaa</mat-label>
+      <textarea matInput formControlName="descripcion" rows="5" 
+                placeholder="Falla: no enciende, hace ruido, etc. 
+    Teléfono: +58 424 924 6885
+    Tipo: DOMICILIO / TIENDA                              
+    Ubicación/Dirección: Calle..., Ciudad... (si DOMICILIO) "></textarea>
+    </mat-form-field>
+  </form>
 
-      <div class="hint">
-        Describe el problema (marca/modelo, si enciende, ruidos, etc.).
-      </div>
-    </form>
-  </ng-container>
-
-  <ng-template #viewMode>
-    <div class="view">
-      <div class="row">
-        <div class="label">Estado</div>
-        <div class="value">{{ ticket.estado }}</div>
-      </div>
-
-      <div class="row">
-        <div class="label">Creado</div>
-        <div class="value">{{ ticket.createdAt | date:'short' }}</div>
-      </div>
-
-      <div class="divider"><mat-divider></mat-divider></div>
-
-      <div class="label">Descripción</div>
-      <div class="value block">{{ ticket.descripcion }}</div>
-
-      <div class="divider"><mat-divider></mat-divider></div>
-
-      <div class="muted">
-        Este ticket es la solicitud inicial. El seguimiento principal se hace en la orden (OT) cuando el taller la cree.
-      </div>
+  <div *ngIf="isView && ticket">
+    <div class="row mb8">
+      <span class="strong">Estado: </span>
+      <span class="status-pill">{{ ticket.estado }}</span>
     </div>
-  </ng-template>
-</div>
+    <mat-divider></mat-divider>
+    <div class="mt12">
+      <p class="strong">Descripción enviada:</p>
+      <p class="description-text">{{ ticket.descripcion }}</p>
+    </div>
+    <div class="mt12 small muted">
+      Creado el: {{ ticket.createdAt | date:'medium' }}
+    </div>
+  </div>
+</mat-dialog-content>
 
-<div mat-dialog-actions align="end">
+<mat-dialog-actions align="end">
   <button mat-button (click)="close(false)">Cerrar</button>
-
-  <ng-container *ngIf="isNew">
-    <button mat-flat-button color="primary" (click)="create()" [disabled]="newForm.invalid || busy()">
-      Crear ticket
-    </button>
-  </ng-container>
-</div>
+  <button *ngIf="isNew" 
+          mat-flat-button 
+          color="primary" 
+          (click)="crear()" 
+          [disabled]="newForm.invalid || loading()">
+    {{ loading() ? 'Enviando...' : 'Enviar Solicitud' }}
+  </button>
+</mat-dialog-actions>
