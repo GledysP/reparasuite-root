@@ -4,6 +4,7 @@ export interface ApiListaResponse<T> {
 }
 
 export interface ClienteOtItemDto {
+  id?: string; // opcional por compat
   codigo: string;
   estado: string;
   tipo: string;
@@ -103,6 +104,14 @@ export interface TicketListaItemDto {
   updatedAt: string;
 }
 
+export interface TicketFotoDto {
+  id: string;
+  url: string;
+  nombreOriginal?: string | null;
+  createdAt: string;
+}
+
+// ✅ Alineado con tu backend actual (TicketDetalleDto Java)
 export interface TicketDetalleDto {
   id: string;
   estado: string;
@@ -111,4 +120,21 @@ export interface TicketDetalleDto {
   mensajes: MensajeDto[];
   createdAt: string;
   updatedAt: string;
+
+  // vínculo a OT (si ya existe)
+  ordenTrabajoId?: string | null;
+
+  // snapshots cliente
+  clienteNombre?: string | null;
+  clienteTelefono?: string | null;
+  clienteEmail?: string | null;
+
+  // campos estructurados
+  equipo?: string | null;
+  descripcionFalla?: string | null;
+  tipoServicioSugerido?: string | null;
+  direccion?: string | null;
+
+  // fotos ticket
+  fotos?: TicketFotoDto[];
 }

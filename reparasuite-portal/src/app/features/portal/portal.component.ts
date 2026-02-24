@@ -265,6 +265,7 @@ export class PortalComponent {
   }
 
   async openTicket(ticketId: string) {
+  try {
     const detail = await this.ticketsService.obtener(ticketId);
     const ref = this.dialog.open(TicketDialogComponent, {
       width: '720px',
@@ -274,7 +275,10 @@ export class PortalComponent {
     ref.afterClosed().subscribe(async (ok: boolean) => {
       if (ok) await this.loadTickets();
     });
+  } catch {
+    this.snack.open('No se pudo cargar el ticket', 'OK', { duration: 2500 });
   }
+}
 
   // -----------------------
   // Presupuesto

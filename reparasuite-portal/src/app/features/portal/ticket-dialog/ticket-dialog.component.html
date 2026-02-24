@@ -1,22 +1,102 @@
 <h2 mat-dialog-title>
-  {{ isNew ? 'Nueva Solicitud de Soporte' : 'Detalle de Ticket' }}
+  {{ isNew ? 'Nueva solicitud de soporte' : 'Detalle de ticket' }}
 </h2>
 
 <mat-dialog-content>
-  <form *ngIf="isNew" [formGroup]="newForm" class="pt10">
+  <form *ngIf="isNew" [formGroup]="newForm" class="ticket-form pt10">
+    <div class="form-grid">
+      <!-- ✅ Equipo (antes: asunto) -->
+      <mat-form-field appearance="outline" class="w100">
+        <mat-label>Equipo</mat-label>
+        <input
+          matInput
+          formControlName="equipo"
+          placeholder="Ej: Laptop Lenovo / TV Samsung / Consola PS5">
+      </mat-form-field>
+
+      <!-- Tipo sugerido (opcional) -->
+      <mat-form-field appearance="outline" class="w100">
+        <mat-label>Tipo de servicio (opcional)</mat-label>
+        <mat-select formControlName="tipoServicioSolicitado">
+          <mat-option value="">Sin preferencia</mat-option>
+          <mat-option value="TIENDA">Llevar al taller (TIENDA)</mat-option>
+          <mat-option value="DOMICILIO">Visita a domicilio (DOMICILIO)</mat-option>
+        </mat-select>
+        <mat-hint>El taller puede confirmar otro tipo por chat según el caso.</mat-hint>
+      </mat-form-field>
+    </div>
+
+    <!-- Falla -->
     <mat-form-field appearance="outline" class="w100">
-      <mat-label>Asunto / Equipo</mat-label>
-      <input matInput formControlName="asunto" placeholder="Equipo: TV / Laptop / etc">
+      <mat-label>Descripción de la falla</mat-label>
+      <textarea
+        matInput
+        formControlName="descripcionFalla"
+        rows="5"
+        placeholder="Describe la falla: qué ocurre, desde cuándo, si enciende, sonidos, mensajes en pantalla, etc."></textarea>
     </mat-form-field>
 
+    <!-- Dirección opcional -->
     <mat-form-field appearance="outline" class="w100">
-      <mat-label>Descripción detalladaaaa</mat-label>
-      <textarea matInput formControlName="descripcion" rows="5" 
-                placeholder="Falla: no enciende, hace ruido, etc. 
-    Teléfono: +58 424 924 6885
-    Tipo: DOMICILIO / TIENDA                              
-    Ubicación/Dirección: Calle..., Ciudad... (si DOMICILIO) "></textarea>
+      <mat-label>Dirección / ubicación (opcional)</mat-label>
+      <textarea
+        matInput
+        formControlName="direccionSolicitud"
+        rows="2"
+        placeholder="Solo si deseas sugerir atención a domicilio o facilitar ubicación"></textarea>
     </mat-form-field>
+
+    <!-- Observaciones -->
+    <mat-form-field appearance="outline" class="w100">
+      <mat-label>Observaciones (opcional)</mat-label>
+      <textarea
+        matInput
+        formControlName="observaciones"
+        rows="2"
+        placeholder="Ej: horario de contacto, urgencia, detalles extra"></textarea>
+    </mat-form-field>
+
+    <mat-divider class="mb12"></mat-divider>
+
+    <!-- Foto -->
+    <div class="upload-box">
+      <div class="upload-header">
+        <div>
+          <div class="upload-title">Foto del equipo / falla (opcional)</div>
+          <div class="upload-subtitle">
+            Ayuda al taller a revisar mejor tu caso.
+          </div>
+        </div>
+
+        <label class="upload-btn" [class.disabled]="loading()">
+          <input
+            #photoInput
+            type="file"
+            accept="image/*"
+            (change)="onPickPhoto(photoInput)"
+            [disabled]="loading()"
+            hidden>
+          <mat-icon>photo_camera</mat-icon>
+          Seleccionar foto
+        </label>
+      </div>
+
+      <div class="photo-preview" *ngIf="photoPreviewUrl">
+        <img [src]="photoPreviewUrl" alt="Vista previa de foto del ticket">
+        <button type="button" mat-stroked-button (click)="removePhoto()" [disabled]="loading()">
+          <mat-icon>delete</mat-icon>
+          Quitar foto
+        </button>
+      </div>
+    </div>
+
+    <div class="notice-box">
+      <mat-icon>info</mat-icon>
+      <div>
+        El tipo de servicio es <strong>opcional</strong>. Puedes enviar tu solicitud y luego
+        <strong>chatear con el taller</strong> para acordar si será en tienda o a domicilio.
+      </div>
+    </div>
   </form>
 
   <div *ngIf="isView && ticket">
@@ -24,11 +104,76 @@
       <span class="strong">Estado: </span>
       <span class="status-pill">{{ ticket.estado }}</span>
     </div>
+
     <mat-divider></mat-divider>
-    <div class="mt12">
-      <p class="strong">Descripción enviada:</p>
+
+    <!-- ✅ Vista limpia: mostrar campos estructurados primero -->
+    <div class="mt12" *ngIf="ticket.equipo || ticket.descripcionFalla || ticket.tipoServicioSugerido || ticket.direccion">
+      <p class="strong">Datos de la solicitud</p>
+
+      <div class="kv" *ngIf="ticket.equipo">
+        <span class="k">Equipo:</span>
+        <span class="v">{{ ticket.equipo }}</span>
+      </div>
+
+      <div class="kv" *ngIf="ticket.descripcionFalla">
+        <span class="k">Falla:</span>
+        <span class="v">{{ ticket.descripcionFalla }}</span>
+      </div>
+
+      <div class="kv" *ngIf="ticket.tipoServicioSugerido">
+        <span class="k">Tipo sugerido:</span>
+        <span class="v">{{ ticket.tipoServicioSugerido }}</span>
+      </div>
+
+      <div class="kv" *ngIf="ticket.direccion">
+        <span class="k">Dirección:</span>
+        <span class="v">{{ ticket.direccion }}</span>
+      </div>
+    </div>
+
+    <!-- ✅ Descripción legacy solo como soporte/fallback -->
+    <div class="mt12" *ngIf="ticket.descripcion">
+      <mat-divider></mat-divider>
+      <p class="strong mt12">Detalle enviado</p>
       <p class="description-text">{{ ticket.descripcion }}</p>
     </div>
+
+    <!-- ✅ Fotos -->
+    <div class="mt12" *ngIf="ticket.fotos?.length">
+      <mat-divider></mat-divider>
+      <p class="strong mt12">Fotos adjuntas</p>
+
+      <div class="ticket-fotos-grid">
+        <a
+          class="foto-item"
+          *ngFor="let f of ticket.fotos"
+          [href]="resolveFileUrl(f.url)"
+          target="_blank"
+          rel="noopener"
+        >
+          <img [src]="resolveFileUrl(f.url)" [alt]="f.nombreOriginal || 'Foto ticket'">
+          <div class="foto-name">{{ f.nombreOriginal || 'imagen' }}</div>
+        </a>
+      </div>
+    </div>
+
+    <!-- ✅ Mensajes -->
+    <div class="mt12" *ngIf="ticket.mensajes.length">
+      <mat-divider></mat-divider>
+      <p class="strong mt12">Mensajes</p>
+
+      <div class="ticket-msg-list">
+        <div class="ticket-msg" *ngFor="let m of ticket.mensajes">
+          <div class="ticket-msg-top">
+            <strong>{{ m.remitenteNombre }}</strong>
+            <span class="muted small">({{ m.remitenteTipo }}) · {{ m.createdAt | date:'short' }}</span>
+          </div>
+          <div class="ticket-msg-body">{{ m.contenido }}</div>
+        </div>
+      </div>
+    </div>
+
     <div class="mt12 small muted">
       Creado el: {{ ticket.createdAt | date:'medium' }}
     </div>
@@ -37,11 +182,13 @@
 
 <mat-dialog-actions align="end">
   <button mat-button (click)="close(false)">Cerrar</button>
-  <button *ngIf="isNew" 
-          mat-flat-button 
-          color="primary" 
-          (click)="crear()" 
-          [disabled]="newForm.invalid || loading()">
-    {{ loading() ? 'Enviando...' : 'Enviar Solicitud' }}
+
+  <button
+    *ngIf="isNew"
+    mat-flat-button
+    color="primary"
+    (click)="crear()"
+    [disabled]="newForm.invalid || loading()">
+    {{ loading() ? 'Enviando...' : 'Enviar solicitud' }}
   </button>
 </mat-dialog-actions>
