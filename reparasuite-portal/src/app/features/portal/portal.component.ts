@@ -1,6 +1,6 @@
-import { Component, signal, inject, computed } from '@angular/core';
+import { Component, signal, inject, computed, ViewChild, ElementRef, AfterViewChecked } from '@angular/core';
 import { CommonModule } from '@angular/common';
-import { ReactiveFormsModule, FormBuilder, Validators } from '@angular/forms';
+import { ReactiveFormsModule, FormBuilder, Validators, FormControl } from '@angular/forms';
 import { Router } from '@angular/router';
 
 import { MatToolbarModule } from '@angular/material/toolbar';
@@ -19,6 +19,7 @@ import { MatDatepickerModule } from '@angular/material/datepicker';
 import { MatNativeDateModule } from '@angular/material/core';
 import { MatTabsModule } from '@angular/material/tabs';
 import { MatSelectModule } from '@angular/material/select';
+import { MatTooltipModule } from '@angular/material/tooltip';
 
 import { environment } from '../../../environments/environment';
 import { AuthService } from '../../core/auth.service';
@@ -44,18 +45,19 @@ type StepKey = 'RECIBIDA' | 'PRESUPUESTO' | 'APROBADA' | 'EN_CURSO' | 'FINALIZAD
   imports: [
     CommonModule,
     ReactiveFormsModule,
-
     MatToolbarModule, MatButtonModule, MatIconModule,
     MatCardModule, MatProgressBarModule, MatDividerModule,
     MatChipsModule, MatFormFieldModule, MatInputModule,
     MatSnackBarModule, MatDialogModule, MatCheckboxModule,
     MatDatepickerModule, MatNativeDateModule,
-    MatTabsModule, MatSelectModule
+    MatTabsModule, MatSelectModule, MatTooltipModule
   ],
   templateUrl: './portal.component.html',
   styleUrls: ['./portal.component.scss']
 })
-export class PortalComponent {
+export class PortalComponent implements AfterViewChecked {
+  @ViewChild('chatScroll') private chatContainer!: ElementRef;
+
   apiBase = environment.apiBaseUrl;
   private fb = inject(FormBuilder);
 
@@ -66,57 +68,41 @@ export class PortalComponent {
   tickets = signal<TicketListaItemDto[]>([]);
   selectedOtDetalle = signal<OtDetalleDto | null>(null);
 
-  // selector OT (dropdown)
   selectedOtCodigoSignal = signal<string | null>(null);
-
-  // Presupuesto aceptación
   aceptoCheck = signal(false);
 
-  // Mensajes OT
   msgForm = this.fb.group({
     contenido: ['', [Validators.required, Validators.minLength(1)]]
   });
 
-  // Citas (ya no se usan en UI cliente, se dejan por compatibilidad)
   citaInicioFecha = signal<Date | null>(null);
-  citaInicioHora = signal<string>(''); // "HH:mm"
+  citaInicioHora = signal<string>(''); 
   citaDuracionMinutos = 60;
 
-  // Pago comprobante
   pagoFile = signal<File | null>(null);
-
-  // Tabs Gestión (0 Presupuesto, 1 Citas, 2 Pago)
   gestionTabIndex = signal(0);
 
-  // Stepper minimal
   readonly steps: { key: StepKey; label: string; icon: string }[] = [
-    { key: 'RECIBIDA', label: 'Recibida', icon: 'inbox' },
+    { key: 'RECIBIDA', label: 'Recibida', icon: 'inventory_2' },
     { key: 'PRESUPUESTO', label: 'Presupuesto', icon: 'request_quote' },
-    { key: 'APROBADA', label: 'Aprobada', icon: 'check_circle' },
+    { key: 'APROBADA', label: 'Aprobada', icon: 'verified' },
     { key: 'EN_CURSO', label: 'En curso', icon: 'build' },
-    { key: 'FINALIZADA', label: 'Finalizada', icon: 'verified' }
+    { key: 'FINALIZADA', label: 'Finalizada', icon: 'task_alt' }
   ];
 
   stepIndex = computed(() => {
     const estado = (this.selectedOtDetalle()?.estado || '').toUpperCase();
     const map: Record<string, StepKey> = {
-      'RECIBIDA': 'RECIBIDA',
-      'NUEVA': 'RECIBIDA',
-      'PRESUPUESTO': 'PRESUPUESTO',
-      'ENVIADO': 'PRESUPUESTO',
-      'APROBADA': 'APROBADA',
-      'ACEPTADO': 'APROBADA',
-      'EN_CURSO': 'EN_CURSO',
-      'REPARANDO': 'EN_CURSO',
-      'FINALIZADA': 'FINALIZADA',
-      'TERMINADA': 'FINALIZADA',
-      'LISTO': 'FINALIZADA'
+      'RECIBIDA': 'RECIBIDA', 'NUEVA': 'RECIBIDA',
+      'PRESUPUESTO': 'PRESUPUESTO', 'ENVIADO': 'PRESUPUESTO',
+      'APROBADA': 'APROBADA', 'ACEPTADO': 'APROBADA',
+      'EN_CURSO': 'EN_CURSO', 'REPARANDO': 'EN_CURSO',
+      'FINALIZADA': 'FINALIZADA', 'TERMINADA': 'FINALIZADA', 'LISTO': 'FINALIZADA'
     };
     const key = map[estado] ?? 'RECIBIDA';
     return Math.max(0, this.steps.findIndex(s => s.key === key));
   });
 
-  // ✅ Próxima cita (ordenada)
   nextCita = computed<CitaDto | null>(() => {
     const ot = this.selectedOtDetalle();
     const citas = ot?.citas ?? [];
@@ -125,14 +111,11 @@ export class PortalComponent {
     return sorted[0] ?? null;
   });
 
-  // ✅ URL segura para template strict
   comprobanteHref = computed<string | null>(() => {
     const ot = this.selectedOtDetalle();
     const url = ot?.pago?.comprobanteUrl ?? null;
     if (!url) return null;
-
     if (/^https?:\/\//i.test(url)) return url;
-
     const base = (this.apiBase || '').replace(/\/$/, '');
     const path = url.startsWith('/') ? url : `/${url}`;
     return `${base}${path}`;
@@ -147,6 +130,18 @@ export class PortalComponent {
     private dialog: MatDialog
   ) {
     this.refreshAll();
+  }
+
+  ngAfterViewChecked() {
+    this.scrollToBottom();
+  }
+
+  private scrollToBottom(): void {
+    try {
+      if (this.chatContainer) {
+        this.chatContainer.nativeElement.scrollTop = this.chatContainer.nativeElement.scrollHeight;
+      }
+    } catch (err) {}
   }
 
   trackById(_: number, item: any) {
@@ -167,16 +162,6 @@ export class PortalComponent {
     return (m.remitenteTipo || '').toUpperCase() === 'CLIENTE';
   }
 
-  activityIcon(h: HistorialItemDto): string {
-    const t = (h?.evento || h?.descripcion || '').toLowerCase();
-    if (t.includes('presupuesto')) return 'request_quote';
-    if (t.includes('pago') || t.includes('transfer')) return 'payments';
-    if (t.includes('cita')) return 'event';
-    if (t.includes('mensaje')) return 'chat';
-    if (t.includes('foto')) return 'photo_camera';
-    return 'history';
-  }
-
   async refreshAll() {
     await Promise.all([this.loadOts(), this.loadTickets()]);
   }
@@ -184,16 +169,13 @@ export class PortalComponent {
   async loadOts() {
     const clienteId = this.auth.getClienteId();
     if (!clienteId) return;
-
     this.loading.set(true);
     try {
       const res = await this.otService.listarMisOts(clienteId, 0, 50);
       this.ots.set(res.items);
-
       if (!this.selectedOtCodigoSignal() && res.items.length > 0) {
         this.selectedOtCodigoSignal.set(res.items[0].codigo);
       }
-
       if (!this.selectedOtDetalle() && res.items.length > 0) {
         await this.loadDetalle(res.items[0].codigo);
       }
@@ -221,11 +203,7 @@ export class PortalComponent {
       const d = await this.otService.obtenerDetalle(idOrCodigo);
       this.selectedOtDetalle.set(d);
       this.aceptoCheck.set(false);
-
       if (d?.citas?.length) this.gestionTabIndex.set(1);
-
-      this.citaInicioFecha.set(null);
-      this.citaInicioHora.set('');
     } catch {
       this.snack.open('No se pudo cargar el detalle de la OT', 'OK', { duration: 2500 });
     } finally {
@@ -238,9 +216,7 @@ export class PortalComponent {
     this.router.navigateByUrl('/login');
   }
 
-  // -----------------------
-  // Tickets
-  // -----------------------
+  // --- TICKETS ---
   async loadTickets() {
     this.loading.set(true);
     try {
@@ -265,24 +241,22 @@ export class PortalComponent {
   }
 
   async openTicket(ticketId: string) {
-  try {
-    const detail = await this.ticketsService.obtener(ticketId);
-    const ref = this.dialog.open(TicketDialogComponent, {
-      width: '720px',
-      maxWidth: '92vw',
-      data: { mode: 'view', ticket: detail }
-    });
-    ref.afterClosed().subscribe(async (ok: boolean) => {
-      if (ok) await this.loadTickets();
-    });
-  } catch {
-    this.snack.open('No se pudo cargar el ticket', 'OK', { duration: 2500 });
+    try {
+      const detail = await this.ticketsService.obtener(ticketId);
+      const ref = this.dialog.open(TicketDialogComponent, {
+        width: '720px',
+        maxWidth: '92vw',
+        data: { mode: 'view', ticket: detail }
+      });
+      ref.afterClosed().subscribe(async (ok: boolean) => {
+        if (ok) await this.loadTickets();
+      });
+    } catch {
+      this.snack.open('No se pudo cargar el ticket', 'OK', { duration: 2500 });
+    }
   }
-}
 
-  // -----------------------
-  // Presupuesto
-  // -----------------------
+  // --- ACCIONES OT ---
   async aceptar(otId: string) {
     if (!this.aceptoCheck()) return;
     this.actionBusy.set(true);
@@ -291,7 +265,7 @@ export class PortalComponent {
       await this.loadDetalle(otId);
       this.snack.open('Presupuesto aceptado', 'OK', { duration: 1500 });
     } catch {
-      this.snack.open('No se pudo aceptar el presupuesto', 'OK', { duration: 2500 });
+      this.snack.open('Error al aceptar', 'OK', { duration: 2500 });
     } finally {
       this.actionBusy.set(false);
     }
@@ -304,23 +278,20 @@ export class PortalComponent {
       await this.loadDetalle(otId);
       this.snack.open('Presupuesto rechazado', 'OK', { duration: 1500 });
     } catch {
-      this.snack.open('No se pudo rechazar el presupuesto', 'OK', { duration: 2500 });
+      this.snack.open('Error al rechazar', 'OK', { duration: 2500 });
     } finally {
       this.actionBusy.set(false);
     }
   }
 
-  // -----------------------
-  // Pago
-  // -----------------------
   async marcarTransferencia(otId: string) {
     this.actionBusy.set(true);
     try {
       await this.otService.marcarTransferencia(otId);
       await this.loadDetalle(otId);
-      this.snack.open('Marcado como transferencia', 'OK', { duration: 1500 });
+      this.snack.open('Notificado como transferencia', 'OK', { duration: 1500 });
     } catch {
-      this.snack.open('No se pudo marcar transferencia', 'OK', { duration: 2500 });
+      this.snack.open('Error al marcar', 'OK', { duration: 2500 });
     } finally {
       this.actionBusy.set(false);
     }
@@ -329,7 +300,6 @@ export class PortalComponent {
   onPagoFileSelected(ev: Event) {
     const input = ev.target as HTMLInputElement;
     this.pagoFile.set(input.files?.[0] ?? null);
-    input.value = '';
   }
 
   async uploadComprobante(otId: string) {
@@ -340,88 +310,16 @@ export class PortalComponent {
       await this.otService.subirComprobantePago(otId, f);
       this.pagoFile.set(null);
       await this.loadDetalle(otId);
-      this.gestionTabIndex.set(2);
       this.snack.open('Comprobante subido', 'OK', { duration: 1500 });
     } catch {
-      this.snack.open('Error al subir comprobante', 'OK', { duration: 2500 });
+      this.snack.open('Error al subir', 'OK', { duration: 2500 });
     } finally {
       this.actionBusy.set(false);
     }
   }
 
-  // -----------------------
-  // Citas (ya no se usan en UI cliente, se dejan por compatibilidad)
-  // -----------------------
-  async reservarCita(otId: string) {
-    const inicio = this.combineDateTimeToIso(this.citaInicioFecha(), this.citaInicioHora());
-    if (!inicio) {
-      this.snack.open('Selecciona fecha y hora de inicio', 'OK', { duration: 2000 });
-      return;
-    }
-
-    const fin = this.addMinutesIso(inicio, this.citaDuracionMinutos);
-
-    this.actionBusy.set(true);
-    try {
-      await this.otService.reservarCita(otId, inicio, fin);
-      await this.loadDetalle(otId);
-      this.gestionTabIndex.set(1);
-      this.snack.open('Cita reservada', 'OK', { duration: 1500 });
-    } catch {
-      this.snack.open('No se pudo reservar la cita', 'OK', { duration: 2500 });
-    } finally {
-      this.actionBusy.set(false);
-    }
-  }
-
-  async reprogramarPrimera(ot: OtDetalleDto) {
-    const first = ot.citas[0];
-    if (!first) {
-      this.snack.open('No hay citas para reprogramar', 'OK', { duration: 2000 });
-      return;
-    }
-
-    const inicio = this.combineDateTimeToIso(this.citaInicioFecha(), this.citaInicioHora());
-    if (!inicio) {
-      this.snack.open('Selecciona fecha y hora de inicio', 'OK', { duration: 2000 });
-      return;
-    }
-
-    const fin = this.addMinutesIso(inicio, this.citaDuracionMinutos);
-
-    this.actionBusy.set(true);
-    try {
-      await this.otService.reprogramarCita(first.id, inicio, fin);
-      await this.loadDetalle(ot.id);
-      this.gestionTabIndex.set(1);
-      this.snack.open('Cita reprogramada', 'OK', { duration: 1500 });
-    } catch {
-      this.snack.open('No se pudo reprogramar', 'OK', { duration: 2500 });
-    } finally {
-      this.actionBusy.set(false);
-    }
-  }
-
-  private combineDateTimeToIso(date: Date | null, time: string): string | null {
-    if (!date || !time) return null;
-    const [hh, mm] = time.split(':').map(Number);
-    const d = new Date(date);
-    d.setHours(hh || 0, mm || 0, 0, 0);
-    return d.toISOString();
-  }
-
-  private addMinutesIso(iso: string, minutes: number): string {
-    const d = new Date(iso);
-    d.setMinutes(d.getMinutes() + minutes);
-    return d.toISOString();
-  }
-
-  // -----------------------
-  // Chat OT
-  // -----------------------
   async sendMsgOt(otId: string) {
     if (this.msgForm.invalid) return;
-
     const contenido = (this.msgForm.value.contenido ?? '').trim();
     if (!contenido) return;
 
@@ -430,9 +328,8 @@ export class PortalComponent {
       await this.otService.enviarMensaje(otId, contenido);
       this.msgForm.reset();
       await this.loadDetalle(otId);
-      this.snack.open('Mensaje enviado', 'OK', { duration: 1200 });
     } catch {
-      this.snack.open('No se pudo enviar el mensaje', 'OK', { duration: 2500 });
+      this.snack.open('Error al enviar mensaje', 'OK', { duration: 2500 });
     } finally {
       this.actionBusy.set(false);
     }
