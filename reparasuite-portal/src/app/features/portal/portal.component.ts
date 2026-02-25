@@ -5,10 +5,8 @@ import {
   computed,
   ViewChild,
   ElementRef,
-  AfterViewChecked,
-  ChangeDetectionStrategy
+  AfterViewChecked
 } from '@angular/core';
-
 import { CommonModule } from '@angular/common';
 import { ReactiveFormsModule, FormBuilder, Validators } from '@angular/forms';
 import { Router } from '@angular/router';
@@ -48,11 +46,18 @@ import {
 import { TicketDialogComponent } from './ticket-dialog/ticket-dialog.component';
 
 type StepKey = 'RECIBIDA' | 'PRESUPUESTO' | 'APROBADA' | 'EN_CURSO' | 'FINALIZADA';
+type SmartActionTarget = 'presupuesto' | 'citas' | 'pago' | 'chat';
+
+interface SmartNextStepUi {
+  title: string;
+  cta: string;
+  icon: string;
+  action: SmartActionTarget;
+}
 
 @Component({
   selector: 'app-portal',
   standalone: true,
-  changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [
     CommonModule,
     ReactiveFormsModule,
@@ -67,14 +72,13 @@ type StepKey = 'RECIBIDA' | 'PRESUPUESTO' | 'APROBADA' | 'EN_CURSO' | 'FINALIZAD
   styleUrls: ['./portal.component.scss']
 })
 export class PortalComponent implements AfterViewChecked {
-  @ViewChild('chatScroll') private chatContainer?: ElementRef<HTMLDivElement>;
-  @ViewChild('gestionSection') private gestionSection?: ElementRef<HTMLElement>;
-  @ViewChild('chatSection') private chatSection?: ElementRef<HTMLElement>;
+  @ViewChild('chatScroll') private chatContainer!: ElementRef<HTMLElement>;
+  @ViewChild('chatCardRef') private chatCardRef?: ElementRef<HTMLElement>;
+  @ViewChild('servicesCardRef') private servicesCardRef?: ElementRef<HTMLElement>;
 
   apiBase = environment.apiBaseUrl;
-
-  private readonly fb = inject(FormBuilder);
-  private readonly _snackBar = inject(MatSnackBar);
+  private fb = inject(FormBuilder);
+  private _snackBar = inject(MatSnackBar);
 
   loading = signal(false);
   actionBusy = signal(false);
@@ -107,21 +111,13 @@ export class PortalComponent implements AfterViewChecked {
 
   stepIndex = computed(() => {
     const estado = (this.selectedOtDetalle()?.estado || '').toUpperCase();
-
     const map: Record<string, StepKey> = {
-      RECIBIDA: 'RECIBIDA',
-      NUEVA: 'RECIBIDA',
-      PRESUPUESTO: 'PRESUPUESTO',
-      ENVIADO: 'PRESUPUESTO',
-      APROBADA: 'APROBADA',
-      ACEPTADO: 'APROBADA',
-      EN_CURSO: 'EN_CURSO',
-      REPARANDO: 'EN_CURSO',
-      FINALIZADA: 'FINALIZADA',
-      TERMINADA: 'FINALIZADA',
-      LISTO: 'FINALIZADA'
+      'RECIBIDA': 'RECIBIDA', 'NUEVA': 'RECIBIDA',
+      'PRESUPUESTO': 'PRESUPUESTO', 'ENVIADO': 'PRESUPUESTO',
+      'APROBADA': 'APROBADA', 'ACEPTADO': 'APROBADA',
+      'EN_CURSO': 'EN_CURSO', 'REPARANDO': 'EN_CURSO',
+      'FINALIZADA': 'FINALIZADA', 'TERMINADA': 'FINALIZADA', 'LISTO': 'FINALIZADA'
     };
-
     const key = map[estado] ?? 'RECIBIDA';
     return Math.max(0, this.steps.findIndex(s => s.key === key));
   });
@@ -130,7 +126,6 @@ export class PortalComponent implements AfterViewChecked {
     const ot = this.selectedOtDetalle();
     const citas = ot?.citas ?? [];
     if (!citas.length) return null;
-
     const sorted = [...citas].sort((a, b) => (a.inicio || '').localeCompare(b.inicio || ''));
     return sorted[0] ?? null;
   });
@@ -139,177 +134,179 @@ export class PortalComponent implements AfterViewChecked {
     const ot = this.selectedOtDetalle();
     const url = (ot as any)?.pago?.comprobanteUrl ?? null;
     if (!url) return null;
-
     if (/^https?:\/\//i.test(url)) return url;
-
     const base = (this.apiBase || '').replace(/\/$/, '');
     const path = url.startsWith('/') ? url : `/${url}`;
     return `${base}${path}`;
   });
 
-  // ---------- QUICK ACTIONS / ACTIVIDAD ----------
-  lastIncomingMessage = computed<MensajeDto | null>(() => {
-    const ot = this.selectedOtDetalle();
-    const mensajes = ot?.mensajes ?? [];
-    const incoming = [...mensajes].reverse().find((m) => !this.isClienteMsg(m));
-    return incoming ?? null;
-  });
-
+  // ===========================
+  // QUICK ACTIONS / NOTIFICACIONES
+  // ===========================
   quickUnreadCount = computed<number>(() => {
     const ot = this.selectedOtDetalle();
     const mensajes = ot?.mensajes ?? [];
     if (!mensajes.length) return 0;
 
-    const incoming = mensajes.filter((m) => !this.isClienteMsg(m));
-    if (!incoming.length) return 0;
+    // No existe estado real "leído/no leído" en tu modelo actual.
+    // Usamos un proxy visual: últimos mensajes NO cliente (máximo 9).
+    const externos = mensajes.filter(m => !this.isClienteMsg(m));
+    return Math.min(externos.length, 9);
+  });
 
-    // Si backend expone flags de lectura, usarlos
-    const msgsWithReadInfo = incoming.filter((m) => this.readFlagForClient(m) !== undefined);
-    if (msgsWithReadInfo.length > 0) {
-      return msgsWithReadInfo.filter((m) => this.readFlagForClient(m) === false).length;
+  quickMessagesPrimaryText = computed<string>(() => {
+    const count = this.quickUnreadCount();
+    if (count > 0) return `${count} mensaje${count === 1 ? '' : 's'} nuevo${count === 1 ? '' : 's'}`;
+    return 'Sin novedades';
+  });
+
+  quickMessagesSecondaryText = computed<string>(() => {
+    const ot = this.selectedOtDetalle();
+    const mensajes = ot?.mensajes ?? [];
+    if (!mensajes.length) return 'Sin conversación';
+    const last = mensajes[mensajes.length - 1];
+    const remitente = this.isClienteMsg(last) ? 'Tú' : (last.remitenteNombre || 'Técnico');
+    const hora = this.formatTime(last.createdAt);
+    return hora ? `${remitente} · ${hora}` : remitente;
+  });
+
+  quickBudgetPrimaryText = computed<string>(() => {
+    const p = this.selectedOtDetalle()?.presupuesto;
+    if (!p) return 'Sin presupuesto';
+
+    const importe = typeof p.importe === 'number'
+      ? `€ ${p.importe.toFixed(2).replace('.', ',')}`
+      : 'Presupuesto disponible';
+
+    return importe;
+  });
+
+  quickBudgetSecondaryText = computed<string>(() => {
+    const p = this.selectedOtDetalle()?.presupuesto;
+    if (!p) return 'Esperando valoración';
+    return (p.estado || 'Pendiente').toString();
+  });
+
+  showQuickPago = computed<boolean>(() => {
+    const ot = this.selectedOtDetalle();
+    return !!ot; // mostrar siempre que haya OT seleccionada (más consistente)
+  });
+
+  isPagoPendiente = computed<boolean>(() => {
+    const ot = this.selectedOtDetalle() as any;
+    const pagoEstado = (ot?.pago?.estado || '').toString().toUpperCase();
+    if (pagoEstado.includes('PEND')) return true;
+
+    // Proxy UX: si hay presupuesto aprobado/enviado y no comprobante aún, sugerir pago
+    const presEstado = (ot?.presupuesto?.estado || '').toString().toUpperCase();
+    const tienePresupuesto = !!ot?.presupuesto;
+    const pagoNoRegistrado = !ot?.pago || !ot?.pago?.comprobanteUrl;
+    return tienePresupuesto && ['APROBADA', 'ACEPTADO', 'ENVIADO'].includes(presEstado) && pagoNoRegistrado;
+  });
+
+  quickPaymentPrimaryText = computed<string>(() => {
+    const ot = this.selectedOtDetalle() as any;
+    const pagoEstado = (ot?.pago?.estado || '').toString();
+    if (pagoEstado) return pagoEstado;
+    return this.isPagoPendiente() ? 'Pendiente' : 'Sin pago registrado';
+  });
+
+  quickPaymentSecondaryText = computed<string>(() => {
+    const ot = this.selectedOtDetalle() as any;
+    if (ot?.pago?.comprobanteUrl) return 'Comprobante disponible';
+    if (this.isPagoPendiente()) return 'Confirmar transferencia / subir comprobante';
+    return 'Sin acción pendiente';
+  });
+
+  // Estado inteligente (compacto, no card grande)
+  smartNextStep = computed<SmartNextStepUi | null>(() => {
+    const ot = this.selectedOtDetalle() as any;
+    if (!ot) return null;
+
+    const presEstado = (ot?.presupuesto?.estado || '').toString().toUpperCase();
+    const pagoEstado = (ot?.pago?.estado || '').toString().toUpperCase();
+    const tieneCita = Array.isArray(ot?.citas) && ot.citas.length > 0;
+
+    if (presEstado === 'ENVIADO') {
+      return {
+        title: 'Revisar y responder presupuesto',
+        cta: 'Ir a presupuesto',
+        icon: 'payments',
+        action: 'presupuesto'
+      };
     }
 
-    // Fallback heurístico: mensajes del taller posteriores al último mensaje del cliente
-    let lastClientMsgIndex = -1;
-    mensajes.forEach((m, index) => {
-      if (this.isClienteMsg(m)) lastClientMsgIndex = index;
-    });
+    if (!tieneCita && (ot?.estado || '').toString().toUpperCase() !== 'FINALIZADA') {
+      return {
+        title: 'Consultar próxima cita del servicio',
+        cta: 'Ir a citas',
+        icon: 'event',
+        action: 'citas'
+      };
+    }
 
-    return mensajes.slice(lastClientMsgIndex + 1).filter((m) => !this.isClienteMsg(m)).length;
-  });
+    if (this.isPagoPendiente() || pagoEstado.includes('PEND')) {
+      return {
+        title: 'Confirmar transferencia y subir comprobante',
+        cta: 'Ir a pago',
+        icon: 'account_balance',
+        action: 'pago'
+      };
+    }
 
-  showPagoQuickAction = computed<boolean>(() => {
-    const ot = this.selectedOtDetalle();
-    if (!ot) return false;
-    return !!ot.presupuesto || !!(ot as any)?.pago;
-  });
+    if ((ot?.mensajes?.length ?? 0) > 0) {
+      return {
+        title: 'Revisar mensajes del técnico',
+        cta: 'Ir a mensajes',
+        icon: 'chat_bubble_outline',
+        action: 'chat'
+      };
+    }
 
-  isPagoPendienteQuick = computed<boolean>(() => {
-    const ot = this.selectedOtDetalle();
-    if (!ot) return false;
-
-    const estadoPago = String((ot as any)?.pago?.estado || '').toUpperCase();
-    const estadosPendientes = [
-      'PENDIENTE',
-      'ENVIADO',
-      'POR_PAGAR',
-      'PAGO_PENDIENTE',
-      'TRANSFERENCIA_PENDIENTE',
-      'PENDIENTE_CONFIRMACION'
-    ];
-
-    if (estadoPago && estadosPendientes.includes(estadoPago)) return true;
-
-    const estadoPres = String(ot.presupuesto?.estado || '').toUpperCase();
-    const estadosPresupuestoRelevantes = ['ENVIADO', 'APROBADA', 'ACEPTADO'];
-    const pagoConfirmado = ['CONFIRMADO', 'VALIDADO', 'PAGADO', 'COMPLETADO'].includes(estadoPago);
-
-    return !!ot.presupuesto && estadosPresupuestoRelevantes.includes(estadoPres) && !pagoConfirmado;
-  });
-
-  quickPagoLabel = computed<string>(() => {
-    const ot = this.selectedOtDetalle();
-    if (!ot) return 'Sin datos';
-
-    const estadoPago = String((ot as any)?.pago?.estado || '').toUpperCase();
-    if (estadoPago) return this.prettifyEstado(estadoPago);
-
-    if (this.isPagoPendienteQuick()) return 'Pendiente';
-    return 'Disponible';
-  });
-
-  quickPagoMeta = computed<string>(() => {
-    const ot = this.selectedOtDetalle();
-    if (!ot) return 'Revisa métodos de pago';
-
-    const comprobante = (ot as any)?.pago?.comprobanteUrl;
-    if (comprobante) return 'Comprobante cargado';
-
-    if (this.isPagoPendienteQuick()) return 'Confirmar transferencia / subir comprobante';
-    return 'Ver instrucciones y estado';
+    return null;
   });
 
   constructor(
-    private readonly auth: AuthService,
-    private readonly otService: OtService,
-    private readonly ticketsService: TicketsService,
-    private readonly snack: MatSnackBar,
-    private readonly router: Router,
-    private readonly dialog: MatDialog
+    private auth: AuthService,
+    private otService: OtService,
+    private ticketsService: TicketsService,
+    private snack: MatSnackBar,
+    private router: Router,
+    private dialog: MatDialog
   ) {
     this.refreshAll();
   }
 
-  ngAfterViewChecked(): void {
+  ngAfterViewChecked() {
     this.scrollToBottom();
   }
 
   private scrollToBottom(): void {
     try {
-      const el = this.chatContainer?.nativeElement;
-      if (!el) return;
-      el.scrollTop = el.scrollHeight;
+      if (this.chatContainer?.nativeElement) {
+        this.chatContainer.nativeElement.scrollTop = this.chatContainer.nativeElement.scrollHeight;
+      }
     } catch {
       // noop
     }
   }
 
-  private readFlagForClient(m: MensajeDto): boolean | undefined {
-    const msg = m as any;
-
-    const candidates = [
-      msg?.leidoCliente,
-      msg?.leidoPorCliente,
-      msg?.readByClient,
-      msg?.isReadByClient,
-      msg?.leido
-    ];
-
-    const found = candidates.find((v: any) => typeof v === 'boolean');
-    return typeof found === 'boolean' ? found : undefined;
+  private formatTime(value?: string | Date | null): string {
+    if (!value) return '';
+    const d = new Date(value);
+    if (isNaN(d.getTime())) return '';
+    return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
   }
 
-  private prettifyEstado(raw: string): string {
-    return raw
-      .toLowerCase()
-      .split('_')
-      .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
-      .join(' ');
-  }
-
-  private smoothScrollTo(ref?: ElementRef<HTMLElement>, center = false): void {
-    const el = ref?.nativeElement;
-    if (!el) return;
-
-    try {
-      el.scrollIntoView({
-        behavior: 'smooth',
-        block: center ? 'center' : 'start',
-        inline: 'nearest'
-      });
-    } catch {
-      el.scrollIntoView();
-    }
-  }
-
-  openGestionTab(index: number): void {
-    this.gestionTabIndex.set(index);
-    setTimeout(() => this.smoothScrollTo(this.gestionSection), 30);
-  }
-
-  goToChat(): void {
-    setTimeout(() => this.smoothScrollTo(this.chatSection, false), 20);
-  }
-
-  trackById(index: number, item: any): any {
-    return item?.id ?? item?.codigo ?? item?.fecha ?? item?.createdAt ?? index;
+  trackById(_: number, item: any) {
+    return item?.id ?? item?.codigo ?? item?.fecha ?? item?.createdAt ?? _;
   }
 
   selectedOtCodigo(): string | null {
     return this.selectedOtDetalle()?.codigo ?? null;
   }
 
-  refreshDetalle(): void {
+  refreshDetalle() {
     const ot = this.selectedOtDetalle();
     if (!ot) return;
     this.loadDetalle(ot.codigo);
@@ -319,11 +316,55 @@ export class PortalComponent implements AfterViewChecked {
     return (m.remitenteTipo || '').toUpperCase() === 'CLIENTE';
   }
 
-  async refreshAll(): Promise<void> {
+  goToGestionTab(index: number) {
+    this.gestionTabIndex.set(index);
+  }
+
+  goToChat() {
+    // En desktop/móvil lleva visualmente al card de chat
+    setTimeout(() => {
+      this.chatCardRef?.nativeElement?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }, 0);
+  }
+
+  onSmartNextStep(action: SmartActionTarget) {
+    switch (action) {
+      case 'presupuesto':
+        this.goToGestionTab(0);
+        break;
+      case 'citas':
+        this.goToGestionTab(1);
+        break;
+      case 'pago':
+        this.goToGestionTab(2);
+        break;
+      case 'chat':
+        this.goToChat();
+        break;
+      default:
+        break;
+    }
+  }
+
+  scrollToServicesCard() {
+    setTimeout(() => {
+      this.servicesCardRef?.nativeElement?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }, 0);
+  }
+
+  showHowItWorks() {
+    this.snack.open(
+      '1) Selecciona una orden. 2) Revisa estado, citas y presupuesto. 3) Usa Mensajes para comunicarte con el taller.',
+      'OK',
+      { duration: 4200 }
+    );
+  }
+
+  async refreshAll() {
     await Promise.all([this.loadOts(), this.loadTickets()]);
   }
 
-  async loadOts(): Promise<void> {
+  async loadOts() {
     const clienteId = this.auth.getClienteId();
     if (!clienteId) return;
 
@@ -346,26 +387,32 @@ export class PortalComponent implements AfterViewChecked {
     }
   }
 
-  async selectOt(ot: ClienteOtItemDto): Promise<void> {
+  async selectOt(ot: ClienteOtItemDto) {
     this.selectedOtCodigoSignal.set(ot.codigo);
     await this.loadDetalle(ot.codigo);
   }
 
-  async onOtSelectChange(codigo: string): Promise<void> {
+  async onOtSelectChange(codigo: string) {
     if (!codigo) return;
     this.selectedOtCodigoSignal.set(codigo);
     await this.loadDetalle(codigo);
   }
 
-  async loadDetalle(idOrCodigo: string): Promise<void> {
+  async loadDetalle(idOrCodigo: string) {
     this.loading.set(true);
     try {
       const d = await this.otService.obtenerDetalle(idOrCodigo);
       this.selectedOtDetalle.set(d);
       this.aceptoCheck.set(false);
 
+      // UX: si hay citas, abre tab de citas. Si hay pago pendiente, abre pago.
+      const anyD = d as any;
+      const pagoPend = ((anyD?.pago?.estado || '').toString().toUpperCase().includes('PEND'));
       if (d?.citas?.length) {
         this.gestionTabIndex.set(1);
+      }
+      if (pagoPend) {
+        this.gestionTabIndex.set(2);
       }
     } catch {
       this.snack.open('No se pudo cargar el detalle de la OT', 'OK', { duration: 2500 });
@@ -374,13 +421,15 @@ export class PortalComponent implements AfterViewChecked {
     }
   }
 
-  logout(): void {
+  logout() {
     this.auth.logout();
     this.router.navigateByUrl('/login');
   }
 
-  // --- TICKETS ---
-  async loadTickets(): Promise<void> {
+  // ===========================
+  // TICKETS
+  // ===========================
+  async loadTickets() {
     this.loading.set(true);
     try {
       const res = await this.ticketsService.listar(0, 50);
@@ -392,7 +441,7 @@ export class PortalComponent implements AfterViewChecked {
     }
   }
 
-  openNewTicket(): void {
+  openNewTicket() {
     const ref = this.dialog.open(TicketDialogComponent, {
       width: '640px',
       maxWidth: '92vw',
@@ -404,7 +453,7 @@ export class PortalComponent implements AfterViewChecked {
     });
   }
 
-  async openTicket(ticketId: string): Promise<void> {
+  async openTicket(ticketId: string) {
     try {
       const detail = await this.ticketsService.obtener(ticketId);
       const ref = this.dialog.open(TicketDialogComponent, {
@@ -421,8 +470,10 @@ export class PortalComponent implements AfterViewChecked {
     }
   }
 
-  // --- ACCIONES OT ---
-  async aceptar(otId: string): Promise<void> {
+  // ===========================
+  // ACCIONES OT
+  // ===========================
+  async aceptar(otId: string) {
     if (!this.aceptoCheck()) return;
 
     this.actionBusy.set(true);
@@ -437,7 +488,7 @@ export class PortalComponent implements AfterViewChecked {
     }
   }
 
-  async rechazar(otId: string): Promise<void> {
+  async rechazar(otId: string) {
     this.actionBusy.set(true);
     try {
       await this.otService.rechazarPresupuesto(otId);
@@ -450,7 +501,7 @@ export class PortalComponent implements AfterViewChecked {
     }
   }
 
-  async marcarTransferencia(otId: string): Promise<void> {
+  async marcarTransferencia(otId: string) {
     this.actionBusy.set(true);
     try {
       await this.otService.marcarTransferencia(otId);
@@ -463,22 +514,18 @@ export class PortalComponent implements AfterViewChecked {
     }
   }
 
-  onPagoFileSelected(ev: Event): void {
+  onPagoFileSelected(ev: Event) {
     const input = ev.target as HTMLInputElement;
     this.pagoFile.set(input.files?.[0] ?? null);
   }
 
-  copyToClipboard(text: string): void {
-    navigator.clipboard.writeText(text)
-      .then(() => {
-        this._snackBar.open('Copiado al portapapeles', 'Cerrar', { duration: 2000 });
-      })
-      .catch(() => {
-        this._snackBar.open('No se pudo copiar', 'Cerrar', { duration: 2000 });
-      });
+  copyToClipboard(text: string) {
+    navigator.clipboard.writeText(text).then(() => {
+      this._snackBar.open('Copiado al portapapeles', 'Cerrar', { duration: 2000 });
+    });
   }
 
-  async uploadComprobante(otId: string): Promise<void> {
+  async uploadComprobante(otId: string) {
     const f = this.pagoFile();
     if (!f) return;
 
@@ -495,7 +542,7 @@ export class PortalComponent implements AfterViewChecked {
     }
   }
 
-  async sendMsgOt(otId: string): Promise<void> {
+  async sendMsgOt(otId: string) {
     if (this.msgForm.invalid) return;
 
     const contenido = (this.msgForm.value.contenido ?? '').trim();

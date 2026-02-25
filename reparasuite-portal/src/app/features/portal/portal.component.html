@@ -7,12 +7,12 @@
   <span class="spacer"></span>
 
   <div class="topbar-actions">
-    <button mat-button (click)="refreshAll()" class="btn-subtle" aria-label="Actualizar portal">
+    <button mat-button (click)="refreshAll()" class="btn-subtle">
       <mat-icon>refresh</mat-icon>
       <span class="hide-mobile">Actualizar</span>
     </button>
 
-    <button mat-stroked-button (click)="logout()" class="btn-logout" aria-label="Cerrar sesión">
+    <button mat-stroked-button (click)="logout()" class="btn-logout-outline">
       <mat-icon>logout</mat-icon>
       <span class="hide-mobile">Salir</span>
     </button>
@@ -29,8 +29,8 @@
   <div class="rs-shell">
     <!-- SIDEBAR -->
     <aside class="side-panel">
-      <mat-card class="rs-card main-card">
-        <mat-card-header class="header-compact">
+      <mat-card class="rs-card main-card" #servicesCardRef>
+        <mat-card-header class="header-compact services-header">
           <mat-card-title class="rs-mini">
             <mat-icon>format_list_bulleted</mat-icon>
             <span>Mis Servicios</span>
@@ -46,24 +46,21 @@
           </button>
         </mat-card-header>
 
-        <mat-card-content class="sidebar-content">
-          <mat-form-field appearance="outline" class="w100 custom-select">
-            <mat-label>Seleccionar Orden</mat-label>
+        <mat-card-content class="services-content">
+          <div class="field-label">Seleccionar Orden</div>
+          <mat-form-field appearance="outline" class="w100 custom-select compact-field">
             <mat-select
               [value]="selectedOtCodigoSignal()"
               (selectionChange)="onOtSelectChange($event.value)">
               <mat-option *ngFor="let ot of ots(); trackBy: trackById" [value]="ot.codigo">
-                <span class="id-strong">{{ ot.codigo }}</span> · {{ ot.estado }}
+                <span class="strong">{{ ot.codigo }}</span> · {{ ot.estado }}
               </mat-option>
             </mat-select>
           </mat-form-field>
 
-          <!-- Siempre cerrado por defecto -->
-          <mat-expansion-panel class="rs-expansion-clean" [expanded]="false" hideToggle>
-            <mat-expansion-panel-header>
-              <mat-panel-title class="list-label-expansion">
-                ÓRDENES RECIENTES
-              </mat-panel-title>
+          <mat-expansion-panel class="rs-expansion-clean" flat [expanded]="false">
+            <mat-expansion-panel-header class="expansion-header-compact">
+              <mat-panel-title class="list-label-expansion">Órdenes Recientes</mat-panel-title>
             </mat-expansion-panel-header>
 
             <div class="list-scrollable">
@@ -77,7 +74,6 @@
                   <span class="ot-id">{{ ot.codigo }}</span>
                   <span class="ot-date">{{ ot.updatedAt | date:'dd/MM' }}</span>
                 </div>
-
                 <div class="ot-item-footer">
                   <span class="badge" [attr.data-status]="ot.estado">{{ ot.estado }}</span>
                   <span class="ot-type">{{ ot.tipo }}</span>
@@ -97,7 +93,7 @@
                 (click)="openTicket(t.id)">
                 <div class="ticket-content">
                   <div class="ticket-title truncate">{{ t.asunto }}</div>
-                  <div class="tiny">{{ t.updatedAt | date:'short' }}</div>
+                  <div class="ticket-meta tiny">{{ t.updatedAt | date:'short' }}</div>
                 </div>
                 <span class="badge badge--soft">{{ t.estado }}</span>
               </button>
@@ -113,180 +109,159 @@
       </mat-card>
     </aside>
 
-    <!-- MAIN -->
+    <!-- CONTENIDO -->
     <main class="content-panel">
       <ng-container *ngIf="selectedOtDetalle() as ot; else welcomeState">
 
-        <!-- RESUMEN OT COMPACTO -->
-        <mat-card class="rs-card ot-overview-card">
-          <div class="overview-top-row">
-            <div class="progress-pill">
-              <div class="progress-pill-icon">
-                <mat-icon>{{ steps[stepIndex()].icon }}</mat-icon>
-              </div>
-
-              <div class="progress-pill-text">
-                <span class="progress-state">{{ steps[stepIndex()].label }}</span>
-                <span class="progress-step">Paso {{ stepIndex() + 1 }} de {{ steps.length }}</span>
-              </div>
+        <!-- BLOQUE SUPERIOR: ESTADO + HEADER OT COMPACTO -->
+        <section class="top-detail-stack rs-card top-detail-card">
+          <div class="state-top-row">
+            <div class="state-summary-left">
+              <span class="state-pill">
+                <mat-icon>build_circle</mat-icon>
+                {{ ot.estado }}
+              </span>
+              <span class="state-step-copy">Paso {{ stepIndex() + 1 }} de {{ steps.length }}</span>
             </div>
 
             <button
               mat-stroked-button
               (click)="refreshDetalle()"
               class="btn-sync-adaptive"
-              aria-label="Sincronizar orden">
+              aria-label="Sincronizar">
               <mat-icon>refresh</mat-icon>
-              <span class="sync-label">Sincronizar</span>
+              <span>Sincronizar</span>
             </button>
           </div>
 
-          <div class="status-stepper-inline" aria-label="Estado de la orden">
-            <div class="stepper-track">
-              <div
-                class="stepper-progress"
-                [style.width.%]="((stepIndex()) / (steps.length - 1)) * 100">
-              </div>
-            </div>
-
-            <div class="stepper-labels">
-              <div
-                class="stepper-label-item"
-                *ngFor="let s of steps; let i = index"
-                [class.active]="i === stepIndex()"
-                [class.done]="i < stepIndex()">
-                <div class="step-dot">
-                  <mat-icon>{{ s.icon }}</mat-icon>
+          <div class="status-stepper-scroll">
+            <div class="status-stepper-standalone">
+              <ng-container *ngFor="let s of steps; let i = index; let last = last">
+                <div class="step-group">
+                  <div class="step-node" [class.active]="i === stepIndex()" [class.done]="i < stepIndex()">
+                    <mat-icon>{{ s.icon }}</mat-icon>
+                  </div>
+                  <span class="step-label">{{ s.label }}</span>
                 </div>
-                <span>{{ s.label }}</span>
+                <div *ngIf="!last" class="step-connector" [class.done]="i < stepIndex()"></div>
+              </ng-container>
+            </div>
+          </div>
+
+          <div class="ot-compact-body">
+            <div class="header-info">
+              <div class="title-group">
+                <h1>Orden #{{ ot.codigo }}</h1>
+
+                <div class="chip-row">
+                  <span class="badge" [attr.data-status]="ot.estado">{{ ot.estado }}</span>
+                  <span class="chip-outline">{{ ot.tipo }}</span>
+                  <span class="chip-outline tienda" *ngIf="ot.prioridad">{{ ot.prioridad }}</span>
+                </div>
               </div>
             </div>
-          </div>
 
-          <div class="overview-divider"></div>
+            <div class="ot-description" *ngIf="ot.descripcion">
+              <div class="muted tiny uppercase ls-1">Descripción del problema</div>
+              <p>{{ ot.descripcion }}</p>
+            </div>
 
-          <div class="overview-main-row">
-            <div class="title-group">
-              <h1>
-                Orden <span class="ot-id-inline">#{{ ot.codigo }}</span>
-              </h1>
-
-              <div class="chip-row">
-                <span class="badge" [attr.data-status]="ot.estado">{{ ot.estado }}</span>
-                <span class="chip-outline">{{ ot.tipo }}</span>
-                <span class="chip-outline tienda" *ngIf="ot.prioridad">{{ ot.prioridad }}</span>
+            <!-- Estado inteligente ultra compacto (sin card grande) -->
+            <button
+              *ngIf="smartNextStep() as next"
+              type="button"
+              class="smart-inline-cta"
+              (click)="onSmartNextStep(next.action)">
+              <div class="smart-inline-left">
+                <mat-icon>{{ next.icon }}</mat-icon>
+                <div class="smart-inline-copy">
+                  <span class="smart-inline-label">Siguiente paso</span>
+                  <span class="smart-inline-title">{{ next.title }}</span>
+                </div>
               </div>
-            </div>
+              <span class="smart-inline-btn">{{ next.cta }}</span>
+            </button>
+          </div>
+        </section>
+
+        <!-- CENTRO DE NOTIFICACIONES / ACCESOS RÁPIDOS -->
+        <section class="quick-band rs-card" aria-label="Centro de notificaciones OT">
+          <div class="quick-band-head">
+            <div class="quick-band-title">Centro de notificaciones OT</div>
+            <div class="quick-band-subtitle hide-mobile">Acceso rápido a mensajes, cita, presupuesto y pago</div>
           </div>
 
-          <div class="ot-description" *ngIf="ot.descripcion">
-            <div class="muted section-label uppercase ls-1">Descripción del problema</div>
-            <p>{{ ot.descripcion }}</p>
-          </div>
-        </mat-card>
+          <div class="quick-actions-row">
+            <!-- Mensajes -->
+            <button type="button" class="quick-pill" (click)="goToChat()" aria-label="Ir a mensajes">
+              <div class="quick-pill-icon">
+                <mat-icon>chat_bubble_outline</mat-icon>
+                <span class="dot-badge" *ngIf="quickUnreadCount() > 0">{{ quickUnreadCount() > 9 ? '9+' : quickUnreadCount() }}</span>
+              </div>
+              <div class="quick-pill-copy">
+                <span class="quick-pill-label">Mensajes</span>
+                <span class="quick-pill-value">{{ quickMessagesPrimaryText() }}</span>
+                <span class="quick-pill-meta">{{ quickMessagesSecondaryText() }}</span>
+              </div>
+              <mat-icon class="quick-pill-arrow">chevron_right</mat-icon>
+            </button>
 
-        <!-- ACCESOS RÁPIDOS / ACTIVIDAD -->
-        <div class="quick-actions-grid">
-          <!-- MENSAJES -->
-          <button type="button" class="qa-card qa-card--messages" (click)="goToChat()">
-            <div class="qa-icon">
-              <mat-icon>forum</mat-icon>
-            </div>
-
-            <div class="qa-content">
-              <div class="qa-label">Mensajes</div>
-              <div class="qa-value">
-                <ng-container *ngIf="quickUnreadCount() > 0; else noUnreadText">
-                  {{ quickUnreadCount() }} {{ quickUnreadCount() === 1 ? 'mensaje nuevo' : 'mensajes nuevos' }}
+            <!-- Próxima cita -->
+            <button type="button" class="quick-pill" (click)="goToGestionTab(1)" aria-label="Ir a citas">
+              <div class="quick-pill-icon">
+                <mat-icon>event</mat-icon>
+              </div>
+              <div class="quick-pill-copy">
+                <span class="quick-pill-label">Próxima cita</span>
+                <ng-container *ngIf="nextCita() as c; else noQuickCita">
+                  <span class="quick-pill-value">{{ c.inicio | date:'d MMM · HH:mm' }}</span>
+                  <span class="quick-pill-meta">{{ c.estado }}</span>
                 </ng-container>
-                <ng-template #noUnreadText>Sin novedades</ng-template>
+                <ng-template #noQuickCita>
+                  <span class="quick-pill-value">Sin cita</span>
+                  <span class="quick-pill-meta">Pendiente de programación</span>
+                </ng-template>
               </div>
-              <div class="qa-meta" *ngIf="lastIncomingMessage() as lastMsg">
-                {{ lastMsg.remitenteNombre || 'Administrador' }} · {{ lastMsg.createdAt | date:'HH:mm' }}
+              <mat-icon class="quick-pill-arrow">chevron_right</mat-icon>
+            </button>
+
+            <!-- Presupuesto -->
+            <button type="button" class="quick-pill" (click)="goToGestionTab(0)" aria-label="Ir a presupuesto">
+              <div class="quick-pill-icon">
+                <mat-icon>payments</mat-icon>
               </div>
-              <div class="qa-meta" *ngIf="!lastIncomingMessage()">Abre el chat de la orden</div>
-            </div>
+              <div class="quick-pill-copy">
+                <span class="quick-pill-label">Presupuesto</span>
+                <span class="quick-pill-value">{{ quickBudgetPrimaryText() }}</span>
+                <span class="quick-pill-meta">{{ quickBudgetSecondaryText() }}</span>
+              </div>
+              <mat-icon class="quick-pill-arrow">chevron_right</mat-icon>
+            </button>
 
-            <span class="qa-badge" *ngIf="quickUnreadCount() > 0">{{ quickUnreadCount() }}</span>
-            <mat-icon class="qa-chevron">chevron_right</mat-icon>
-          </button>
+            <!-- Pago -->
+            <button
+              *ngIf="showQuickPago()"
+              type="button"
+              class="quick-pill quick-pill--payment"
+              (click)="goToGestionTab(2)"
+              aria-label="Ir a pago">
+              <div class="quick-pill-icon">
+                <mat-icon>account_balance</mat-icon>
+                <span class="dot-warning" *ngIf="isPagoPendiente()"></span>
+              </div>
+              <div class="quick-pill-copy">
+                <span class="quick-pill-label">Pago</span>
+                <span class="quick-pill-value">{{ quickPaymentPrimaryText() }}</span>
+                <span class="quick-pill-meta">{{ quickPaymentSecondaryText() }}</span>
+              </div>
+              <mat-icon class="quick-pill-arrow">chevron_right</mat-icon>
+            </button>
+          </div>
+        </section>
 
-          <!-- PRÓXIMA CITA -->
-          <button type="button" class="qa-card" (click)="openGestionTab(1)">
-            <div class="qa-icon">
-              <mat-icon>event</mat-icon>
-            </div>
-
-            <div class="qa-content">
-              <div class="qa-label">Próxima cita</div>
-
-              <ng-container *ngIf="nextCita() as c; else noCitaQuick">
-                <div class="qa-value">
-                  {{ c.inicio | date:'dd MMM' }} · {{ c.inicio | date:'HH:mm' }}
-                </div>
-                <div class="qa-meta">{{ c.estado }}</div>
-              </ng-container>
-
-              <ng-template #noCitaQuick>
-                <div class="qa-value">Sin cita programada</div>
-                <div class="qa-meta">Ver disponibilidad / estado</div>
-              </ng-template>
-            </div>
-
-            <mat-icon class="qa-chevron">chevron_right</mat-icon>
-          </button>
-
-          <!-- PRESUPUESTO -->
-          <button type="button" class="qa-card" (click)="openGestionTab(0)">
-            <div class="qa-icon">
-              <mat-icon>payments</mat-icon>
-            </div>
-
-            <div class="qa-content">
-              <div class="qa-label">Presupuesto</div>
-
-              <ng-container *ngIf="ot.presupuesto; else noPresQuick">
-                <div class="qa-value">
-                  € {{ ot.presupuesto.importe | number:'1.2-2' }}
-                </div>
-                <div class="qa-meta">{{ ot.presupuesto.estado }}</div>
-              </ng-container>
-
-              <ng-template #noPresQuick>
-                <div class="qa-value">Pendiente de valoración</div>
-                <div class="qa-meta">Te avisaremos cuando esté listo</div>
-              </ng-template>
-            </div>
-
-            <mat-icon class="qa-chevron">chevron_right</mat-icon>
-          </button>
-
-          <!-- PAGO (si aplica) -->
-          <button
-            *ngIf="showPagoQuickAction()"
-            type="button"
-            class="qa-card"
-            [class.qa-card--highlight]="isPagoPendienteQuick()"
-            (click)="openGestionTab(2)">
-            <div class="qa-icon">
-              <mat-icon>account_balance</mat-icon>
-            </div>
-
-            <div class="qa-content">
-              <div class="qa-label">Pago</div>
-              <div class="qa-value">{{ quickPagoLabel() }}</div>
-              <div class="qa-meta">{{ quickPagoMeta() }}</div>
-            </div>
-
-            <span class="qa-dot" *ngIf="isPagoPendienteQuick()"></span>
-            <mat-icon class="qa-chevron">chevron_right</mat-icon>
-          </button>
-        </div>
-
-        <!-- WORKSPACE PRINCIPAL -->
+        <!-- GESTIÓN + CHAT -->
         <div class="action-grid">
-          <!-- GESTIÓN -->
-          <mat-card class="rs-card gestion-card" #gestionSection>
+          <mat-card class="rs-card gestion-card">
             <mat-tab-group
               [selectedIndex]="gestionTabIndex()"
               (selectedIndexChange)="gestionTabIndex.set($event)"
@@ -296,8 +271,8 @@
               <!-- PRESUPUESTO -->
               <mat-tab>
                 <ng-template mat-tab-label>
-                  <mat-icon class="tab-icon">payments</mat-icon>
-                  <span class="tab-label-text">Presupuesto</span>
+                  <mat-icon>payments</mat-icon>
+                  <span class="ml-8">Presupuesto</span>
                 </ng-template>
 
                 <div class="tab-pane">
@@ -308,7 +283,7 @@
                       <span class="status-tag">{{ ot.presupuesto.estado }}</span>
                     </div>
 
-                    <p class="desc-text">{{ ot.presupuesto.detalle }}</p>
+                    <p class="desc-text" *ngIf="ot.presupuesto.detalle">{{ ot.presupuesto.detalle }}</p>
 
                     <div class="approval-zone" *ngIf="ot.presupuesto.estado === 'ENVIADO'">
                       <mat-checkbox
@@ -350,8 +325,8 @@
               <!-- CITAS -->
               <mat-tab>
                 <ng-template mat-tab-label>
-                  <mat-icon class="tab-icon">event</mat-icon>
-                  <span class="tab-label-text">Citas</span>
+                  <mat-icon>event</mat-icon>
+                  <span class="ml-8">Citas</span>
                 </ng-template>
 
                 <div class="tab-pane">
@@ -360,7 +335,6 @@
                       <mat-icon>calendar_today</mat-icon>
                       <span>{{ c.inicio | date:'dd MMMM' }}</span>
                     </div>
-
                     <div class="time-slot">{{ c.inicio | date:'HH:mm' }} - {{ c.fin | date:'HH:mm' }}</div>
                     <div class="badge badge--soft">{{ c.estado }}</div>
                   </div>
@@ -377,14 +351,14 @@
               <!-- PAGO -->
               <mat-tab>
                 <ng-template mat-tab-label>
-                  <mat-icon class="tab-icon">account_balance</mat-icon>
-                  <span class="tab-label-text">Pago</span>
+                  <mat-icon>account_balance</mat-icon>
+                  <span class="ml-8">Pago</span>
                 </ng-template>
 
                 <div class="tab-pane">
                   <div class="pago-container-compact">
                     <div class="bank-info-mini">
-                      <span class="bank-label">IBAN PARA TRANSFERENCIA</span>
+                      <span class="bank-label">IBAN para transferencia</span>
 
                       <div class="bank-row">
                         <span class="bank-value">ES00 0000 0000 0000 0000 0000</span>
@@ -400,7 +374,7 @@
 
                     <button
                       mat-flat-button
-                      class="btn-main btn-main-sm w100"
+                      class="btn-main-sm w100"
                       (click)="marcarTransferencia(ot.id)"
                       [disabled]="actionBusy()">
                       Confirmar Transferencia
@@ -410,9 +384,7 @@
                       <label class="file-label-pro">
                         <input type="file" hidden (change)="onPagoFileSelected($event)" />
                         <mat-icon>attach_file</mat-icon>
-                        <span class="truncate">
-                          {{ pagoFile() ? pagoFile()!.name : 'Comprobante' }}
-                        </span>
+                        <span class="truncate">{{ pagoFile() ? pagoFile()!.name : 'Comprobante' }}</span>
                       </label>
 
                       <button
@@ -429,36 +401,19 @@
             </mat-tab-group>
           </mat-card>
 
-          <!-- CHAT -->
-          <mat-card class="rs-card chat-card" #chatSection>
-            <mat-card-header class="header-compact">
-              <mat-card-title class="rs-mini chat-title-wrap">
-                <span class="chat-title-left">
-                  <mat-icon>forum</mat-icon>
-                  <span>Mensajes</span>
-                </span>
-
-                <span class="header-counter" *ngIf="quickUnreadCount() > 0">
-                  {{ quickUnreadCount() }}
-                </span>
+          <mat-card class="rs-card chat-card" #chatCardRef>
+            <mat-card-header class="header-compact chat-header">
+              <mat-card-title class="rs-mini">
+                <mat-icon>forum</mat-icon>
+                <span>Mensajes</span>
               </mat-card-title>
+
+              <div class="chat-header-badge" *ngIf="quickUnreadCount() > 0">
+                {{ quickUnreadCount() }} nuevo{{ quickUnreadCount() === 1 ? '' : 's' }}
+              </div>
             </mat-card-header>
 
             <mat-card-content class="chat-container">
-              <ng-container *ngIf="quickUnreadCount() > 0">
-                <div class="chat-preview-banner" *ngIf="lastIncomingMessage() as lm">
-                  <mat-icon>mark_chat_unread</mat-icon>
-                  <div class="chat-preview-copy">
-                    <div class="chat-preview-title">
-                      {{ quickUnreadCount() }} {{ quickUnreadCount() === 1 ? 'mensaje nuevo' : 'mensajes nuevos' }}
-                    </div>
-                    <div class="chat-preview-text truncate">
-                      {{ lm.remitenteNombre || 'Administrador' }}: {{ lm.contenido }}
-                    </div>
-                  </div>
-                </div>
-              </ng-container>
-
               <div class="chat-messages" #chatScroll>
                 <div
                   class="msg-bubble"
@@ -491,19 +446,50 @@
 
       <!-- WELCOME -->
       <ng-template #welcomeState>
-        <div class="welcome-hero-container">
-          <mat-card class="rs-card welcome-main-card">
-            <div class="welcome-hero">
-              <div class="hero-icon"><mat-icon>handshake</mat-icon></div>
+        <div class="welcome-stack">
+          <div class="welcome-hero-container">
+            <div class="welcome-hero rs-card">
+              <div class="hero-icon">
+                <mat-icon>handshake</mat-icon>
+              </div>
               <h1>¡Bienvenido a ReparaSuite!</h1>
-              <p>Selecciona una orden de trabajo para comenzar.</p>
+              <p>Selecciona una orden de trabajo para comenzar o crea una nueva solicitud de soporte.</p>
 
               <button mat-flat-button color="primary" class="btn-main" (click)="openNewTicket()">
                 <mat-icon>add</mat-icon>
                 Crear Nuevo Ticket
               </button>
             </div>
-          </mat-card>
+          </div>
+
+          <div class="welcome-quick-grid">
+            <button type="button" class="welcome-mini-card" (click)="openNewTicket()">
+              <div class="wm-icon"><mat-icon>add_circle</mat-icon></div>
+              <div class="wm-copy">
+                <div class="wm-title">Crear Ticket</div>
+                <div class="wm-sub">Inicia una nueva solicitud de soporte</div>
+              </div>
+              <mat-icon class="wm-arrow">chevron_right</mat-icon>
+            </button>
+
+            <button type="button" class="welcome-mini-card" (click)="scrollToServicesCard()">
+              <div class="wm-icon"><mat-icon>search</mat-icon></div>
+              <div class="wm-copy">
+                <div class="wm-title">Ver estado de una orden</div>
+                <div class="wm-sub">Consulta el progreso de una OT existente</div>
+              </div>
+              <mat-icon class="wm-arrow">chevron_right</mat-icon>
+            </button>
+
+            <button type="button" class="welcome-mini-card" (click)="showHowItWorks()">
+              <div class="wm-icon"><mat-icon>help_outline</mat-icon></div>
+              <div class="wm-copy">
+                <div class="wm-title">Cómo funciona ReparaSuite</div>
+                <div class="wm-sub">Guía rápida del portal cliente</div>
+              </div>
+              <mat-icon class="wm-arrow">chevron_right</mat-icon>
+            </button>
+          </div>
         </div>
       </ng-template>
     </main>
