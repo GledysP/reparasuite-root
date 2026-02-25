@@ -3,77 +3,100 @@
     <span class="logo">ReparaSuite</span>
     <span class="subtitle">Portal Cliente</span>
   </div>
+
   <span class="spacer"></span>
+
   <div class="topbar-actions">
-    <button mat-button (click)="refreshAll()" class="btn-subtle">
+    <button mat-button (click)="refreshAll()" class="btn-subtle" aria-label="Actualizar portal">
       <mat-icon>refresh</mat-icon>
       <span class="hide-mobile">Actualizar</span>
     </button>
-    <button mat-flat-button (click)="logout()" class="btn-logout">
+
+    <button mat-stroked-button (click)="logout()" class="btn-logout" aria-label="Cerrar sesión">
       <mat-icon>logout</mat-icon>
-      <span>Salir</span>
+      <span class="hide-mobile">Salir</span>
     </button>
   </div>
 </mat-toolbar>
 
-<mat-progress-bar *ngIf="loading() || actionBusy()" mode="indeterminate" class="global-loader"></mat-progress-bar>
+<mat-progress-bar
+  *ngIf="loading() || actionBusy()"
+  mode="indeterminate"
+  class="global-loader">
+</mat-progress-bar>
 
 <div class="rs-page">
   <div class="rs-shell">
-
+    <!-- SIDEBAR -->
     <aside class="side-panel">
       <mat-card class="rs-card main-card">
         <mat-card-header class="header-compact">
           <mat-card-title class="rs-mini">
-            <mat-icon>format_list_bulleted</mat-icon> Mis Órdenes
+            <mat-icon>format_list_bulleted</mat-icon>
+            <span>Mis Servicios</span>
           </mat-card-title>
-          <button mat-icon-button (click)="openNewTicket()" class="btn-add" matTooltip="Nuevo Ticket">
+
+          <button
+            mat-icon-button
+            (click)="openNewTicket()"
+            class="btn-add"
+            matTooltip="Nuevo Ticket"
+            aria-label="Crear nuevo ticket">
             <mat-icon>add</mat-icon>
           </button>
         </mat-card-header>
 
-        <mat-card-content>
-          <ng-container *ngIf="ots().length; else emptyOts">
-            <mat-form-field appearance="outline" class="w100 custom-select">
-              <mat-label>Seleccionar Orden</mat-label>
-              <mat-select [value]="selectedOtCodigoSignal()" (selectionChange)="onOtSelectChange($event.value)">
-                <mat-option *ngFor="let ot of ots(); trackBy: trackById" [value]="ot.codigo">
-                  <span class="strong">{{ ot.codigo }}</span> · {{ ot.estado }}
-                </mat-option>
-              </mat-select>
-            </mat-form-field>
+        <mat-card-content class="sidebar-content">
+          <mat-form-field appearance="outline" class="w100 custom-select">
+            <mat-label>Seleccionar Orden</mat-label>
+            <mat-select
+              [value]="selectedOtCodigoSignal()"
+              (selectionChange)="onOtSelectChange($event.value)">
+              <mat-option *ngFor="let ot of ots(); trackBy: trackById" [value]="ot.codigo">
+                <span class="id-strong">{{ ot.codigo }}</span> · {{ ot.estado }}
+              </mat-option>
+            </mat-select>
+          </mat-form-field>
+
+          <!-- Siempre cerrado por defecto -->
+          <mat-expansion-panel class="rs-expansion-clean" [expanded]="false" hideToggle>
+            <mat-expansion-panel-header>
+              <mat-panel-title class="list-label-expansion">
+                ÓRDENES RECIENTES
+              </mat-panel-title>
+            </mat-expansion-panel-header>
 
             <div class="list-scrollable">
-              <div class="list-label">Órdenes recientes</div>
-              <button type="button" class="ot-item" *ngFor="let ot of ots(); trackBy: trackById"
-                [class.active]="selectedOtCodigo() === ot.codigo" (click)="selectOt(ot)">
+              <button
+                type="button"
+                class="ot-item"
+                *ngFor="let ot of ots(); trackBy: trackById"
+                [class.active]="selectedOtCodigo() === ot.codigo"
+                (click)="selectOt(ot)">
                 <div class="ot-item-header">
                   <span class="ot-id">{{ ot.codigo }}</span>
                   <span class="ot-date">{{ ot.updatedAt | date:'dd/MM' }}</span>
                 </div>
+
                 <div class="ot-item-footer">
                   <span class="badge" [attr.data-status]="ot.estado">{{ ot.estado }}</span>
                   <span class="ot-type">{{ ot.tipo }}</span>
                 </div>
               </button>
             </div>
-          </ng-container>
+          </mat-expansion-panel>
 
-          <ng-template #emptyOts>
-            <div class="empty-state">
-              <mat-icon>inbox</mat-icon>
-              <p>No tienes órdenes activas</p>
-            </div>
-          </ng-template>
+          <div class="list-label ticket-label-divider">Tickets de soporte</div>
 
-          <mat-divider class="my16"></mat-divider>
-
-          <div class="list-label">Tickets de soporte</div>
           <ng-container *ngIf="tickets().length; else emptyTickets">
             <div class="ticket-list">
-              <button type="button" class="ticket-item" *ngFor="let t of tickets(); trackBy: trackById" (click)="openTicket(t.id)">
+              <button
+                type="button"
+                class="ticket-item"
+                *ngFor="let t of tickets(); trackBy: trackById"
+                (click)="openTicket(t.id)">
                 <div class="ticket-content">
-                  <div class="strong truncate">{{ t.asunto }}</div>
+                  <div class="ticket-title truncate">{{ t.asunto }}</div>
                   <div class="tiny">{{ t.updatedAt | date:'short' }}</div>
                 </div>
                 <span class="badge badge--soft">{{ t.estado }}</span>
@@ -90,54 +113,193 @@
       </mat-card>
     </aside>
 
+    <!-- MAIN -->
     <main class="content-panel">
       <ng-container *ngIf="selectedOtDetalle() as ot; else welcomeState">
-        
-        <mat-card class="rs-card header-detail-card">
-          <div class="status-stepper">
-            <div class="step-line" [style.width.%]="(stepIndex() / (steps.length - 1)) * 100"></div>
-            <div class="step-nodes">
-              <div class="step-node" *ngFor="let s of steps; let i = index" 
-                   [class.active]="i === stepIndex()" 
-                   [class.done]="i < stepIndex()"
-                   [matTooltip]="s.label">
-                <mat-icon>{{ s.icon }}</mat-icon>
+
+        <!-- RESUMEN OT COMPACTO -->
+        <mat-card class="rs-card ot-overview-card">
+          <div class="overview-top-row">
+            <div class="progress-pill">
+              <div class="progress-pill-icon">
+                <mat-icon>{{ steps[stepIndex()].icon }}</mat-icon>
+              </div>
+
+              <div class="progress-pill-text">
+                <span class="progress-state">{{ steps[stepIndex()].label }}</span>
+                <span class="progress-step">Paso {{ stepIndex() + 1 }} de {{ steps.length }}</span>
+              </div>
+            </div>
+
+            <button
+              mat-stroked-button
+              (click)="refreshDetalle()"
+              class="btn-sync-adaptive"
+              aria-label="Sincronizar orden">
+              <mat-icon>refresh</mat-icon>
+              <span class="sync-label">Sincronizar</span>
+            </button>
+          </div>
+
+          <div class="status-stepper-inline" aria-label="Estado de la orden">
+            <div class="stepper-track">
+              <div
+                class="stepper-progress"
+                [style.width.%]="((stepIndex()) / (steps.length - 1)) * 100">
+              </div>
+            </div>
+
+            <div class="stepper-labels">
+              <div
+                class="stepper-label-item"
+                *ngFor="let s of steps; let i = index"
+                [class.active]="i === stepIndex()"
+                [class.done]="i < stepIndex()">
+                <div class="step-dot">
+                  <mat-icon>{{ s.icon }}</mat-icon>
+                </div>
+                <span>{{ s.label }}</span>
               </div>
             </div>
           </div>
 
-          <div class="header-info">
+          <div class="overview-divider"></div>
+
+          <div class="overview-main-row">
             <div class="title-group">
-              <h1>Orden #{{ ot.codigo }}</h1>
+              <h1>
+                Orden <span class="ot-id-inline">#{{ ot.codigo }}</span>
+              </h1>
+
               <div class="chip-row">
                 <span class="badge" [attr.data-status]="ot.estado">{{ ot.estado }}</span>
                 <span class="chip-outline">{{ ot.tipo }}</span>
-                <span class="chip-outline" *ngIf="ot.prioridad">{{ ot.prioridad }}</span>
+                <span class="chip-outline tienda" *ngIf="ot.prioridad">{{ ot.prioridad }}</span>
               </div>
-            </div>
-            <div class="header-actions">
-              <button mat-stroked-button (click)="refreshDetalle()" class="btn-refresh">
-                <mat-icon>refresh</mat-icon> <span class="hide-tablet">Sincronizar</span>
-              </button>
             </div>
           </div>
 
           <div class="ot-description" *ngIf="ot.descripcion">
-            <div class="muted tiny uppercase ls-1">Descripción del problema</div>
+            <div class="muted section-label uppercase ls-1">Descripción del problema</div>
             <p>{{ ot.descripcion }}</p>
           </div>
         </mat-card>
 
+        <!-- ACCESOS RÁPIDOS / ACTIVIDAD -->
+        <div class="quick-actions-grid">
+          <!-- MENSAJES -->
+          <button type="button" class="qa-card qa-card--messages" (click)="goToChat()">
+            <div class="qa-icon">
+              <mat-icon>forum</mat-icon>
+            </div>
+
+            <div class="qa-content">
+              <div class="qa-label">Mensajes</div>
+              <div class="qa-value">
+                <ng-container *ngIf="quickUnreadCount() > 0; else noUnreadText">
+                  {{ quickUnreadCount() }} {{ quickUnreadCount() === 1 ? 'mensaje nuevo' : 'mensajes nuevos' }}
+                </ng-container>
+                <ng-template #noUnreadText>Sin novedades</ng-template>
+              </div>
+              <div class="qa-meta" *ngIf="lastIncomingMessage() as lastMsg">
+                {{ lastMsg.remitenteNombre || 'Administrador' }} · {{ lastMsg.createdAt | date:'HH:mm' }}
+              </div>
+              <div class="qa-meta" *ngIf="!lastIncomingMessage()">Abre el chat de la orden</div>
+            </div>
+
+            <span class="qa-badge" *ngIf="quickUnreadCount() > 0">{{ quickUnreadCount() }}</span>
+            <mat-icon class="qa-chevron">chevron_right</mat-icon>
+          </button>
+
+          <!-- PRÓXIMA CITA -->
+          <button type="button" class="qa-card" (click)="openGestionTab(1)">
+            <div class="qa-icon">
+              <mat-icon>event</mat-icon>
+            </div>
+
+            <div class="qa-content">
+              <div class="qa-label">Próxima cita</div>
+
+              <ng-container *ngIf="nextCita() as c; else noCitaQuick">
+                <div class="qa-value">
+                  {{ c.inicio | date:'dd MMM' }} · {{ c.inicio | date:'HH:mm' }}
+                </div>
+                <div class="qa-meta">{{ c.estado }}</div>
+              </ng-container>
+
+              <ng-template #noCitaQuick>
+                <div class="qa-value">Sin cita programada</div>
+                <div class="qa-meta">Ver disponibilidad / estado</div>
+              </ng-template>
+            </div>
+
+            <mat-icon class="qa-chevron">chevron_right</mat-icon>
+          </button>
+
+          <!-- PRESUPUESTO -->
+          <button type="button" class="qa-card" (click)="openGestionTab(0)">
+            <div class="qa-icon">
+              <mat-icon>payments</mat-icon>
+            </div>
+
+            <div class="qa-content">
+              <div class="qa-label">Presupuesto</div>
+
+              <ng-container *ngIf="ot.presupuesto; else noPresQuick">
+                <div class="qa-value">
+                  € {{ ot.presupuesto.importe | number:'1.2-2' }}
+                </div>
+                <div class="qa-meta">{{ ot.presupuesto.estado }}</div>
+              </ng-container>
+
+              <ng-template #noPresQuick>
+                <div class="qa-value">Pendiente de valoración</div>
+                <div class="qa-meta">Te avisaremos cuando esté listo</div>
+              </ng-template>
+            </div>
+
+            <mat-icon class="qa-chevron">chevron_right</mat-icon>
+          </button>
+
+          <!-- PAGO (si aplica) -->
+          <button
+            *ngIf="showPagoQuickAction()"
+            type="button"
+            class="qa-card"
+            [class.qa-card--highlight]="isPagoPendienteQuick()"
+            (click)="openGestionTab(2)">
+            <div class="qa-icon">
+              <mat-icon>account_balance</mat-icon>
+            </div>
+
+            <div class="qa-content">
+              <div class="qa-label">Pago</div>
+              <div class="qa-value">{{ quickPagoLabel() }}</div>
+              <div class="qa-meta">{{ quickPagoMeta() }}</div>
+            </div>
+
+            <span class="qa-dot" *ngIf="isPagoPendienteQuick()"></span>
+            <mat-icon class="qa-chevron">chevron_right</mat-icon>
+          </button>
+        </div>
+
+        <!-- WORKSPACE PRINCIPAL -->
         <div class="action-grid">
-          
-          <mat-card class="rs-card gestion-card">
-            <mat-tab-group [selectedIndex]="gestionTabIndex()" (selectedIndexChange)="gestionTabIndex.set($event)" 
-                           class="rs-tabs-modern" animationDuration="300ms">
-              
+          <!-- GESTIÓN -->
+          <mat-card class="rs-card gestion-card" #gestionSection>
+            <mat-tab-group
+              [selectedIndex]="gestionTabIndex()"
+              (selectedIndexChange)="gestionTabIndex.set($event)"
+              class="rs-tabs-modern"
+              animationDuration="220ms">
+
+              <!-- PRESUPUESTO -->
               <mat-tab>
                 <ng-template mat-tab-label>
-                  <mat-icon>payments</mat-icon> <span class="ml-8">Presupuesto</span>
+                  <mat-icon class="tab-icon">payments</mat-icon>
+                  <span class="tab-label-text">Presupuesto</span>
                 </ng-template>
+
                 <div class="tab-pane">
                   <ng-container *ngIf="ot.presupuesto; else noPres">
                     <div class="price-hero">
@@ -145,91 +307,121 @@
                       <span class="amount">{{ ot.presupuesto.importe | number:'1.2-2' }}</span>
                       <span class="status-tag">{{ ot.presupuesto.estado }}</span>
                     </div>
+
                     <p class="desc-text">{{ ot.presupuesto.detalle }}</p>
 
                     <div class="approval-zone" *ngIf="ot.presupuesto.estado === 'ENVIADO'">
-                      <mat-checkbox [checked]="aceptoCheck()" (change)="aceptoCheck.set(!aceptoCheck())" class="custom-check">
-                        He revisado y acepto los términos del presupuesto.
+                      <mat-checkbox
+                        [checked]="aceptoCheck()"
+                        (change)="aceptoCheck.set(!aceptoCheck())"
+                        class="custom-check">
+                        He revisado y acepto los términos.
                       </mat-checkbox>
+
                       <div class="btn-row">
-                        <button mat-flat-button class="btn-main" (click)="aceptar(ot.id)" [disabled]="!aceptoCheck() || actionBusy()">
-                          Aceptar Presupuesto
+                        <button
+                          mat-flat-button
+                          class="btn-main"
+                          (click)="aceptar(ot.id)"
+                          [disabled]="!aceptoCheck() || actionBusy()">
+                          Aceptar
                         </button>
-                        <button mat-button class="btn-danger" (click)="rechazar(ot.id)" [disabled]="actionBusy()">
+
+                        <button
+                          mat-button
+                          class="btn-danger"
+                          (click)="rechazar(ot.id)"
+                          [disabled]="actionBusy()">
                           Rechazar
                         </button>
                       </div>
                     </div>
                   </ng-container>
+
                   <ng-template #noPres>
                     <div class="empty-tab">
                       <mat-icon>pending_actions</mat-icon>
-                      <p>Esperando la valoración del técnico</p>
+                      <p>Esperando valoración</p>
                     </div>
                   </ng-template>
                 </div>
               </mat-tab>
 
+              <!-- CITAS -->
               <mat-tab>
                 <ng-template mat-tab-label>
-                  <mat-icon>event</mat-icon> <span class="ml-8">Citas</span>
+                  <mat-icon class="tab-icon">event</mat-icon>
+                  <span class="tab-label-text">Citas</span>
                 </ng-template>
+
                 <div class="tab-pane">
-                  <div class="cita-card" *ngIf="nextCita() as c; else noCita">
+                  <div class="cita-card-compact" *ngIf="nextCita() as c; else noCita">
                     <div class="cita-header">
                       <mat-icon>calendar_today</mat-icon>
-                      <span>Programada para el {{ c.inicio | date:'dd MMMM' }}</span>
+                      <span>{{ c.inicio | date:'dd MMMM' }}</span>
                     </div>
-                    <div class="cita-body">
-                      <div class="time-slot">{{ c.inicio | date:'HH:mm' }} - {{ c.fin | date:'HH:mm' }}</div>
-                      <div class="badge badge--soft">{{ c.estado }}</div>
-                    </div>
-                    <div class="info-alert">
-                      <mat-icon>info</mat-icon>
-                      <span>Para reprogramar, usa el chat de esta orden.</span>
-                    </div>
+
+                    <div class="time-slot">{{ c.inicio | date:'HH:mm' }} - {{ c.fin | date:'HH:mm' }}</div>
+                    <div class="badge badge--soft">{{ c.estado }}</div>
                   </div>
+
                   <ng-template #noCita>
                     <div class="empty-tab">
                       <mat-icon>schedule</mat-icon>
-                      <p>No hay citas programadas actualmente.</p>
+                      <p>Sin citas</p>
                     </div>
                   </ng-template>
                 </div>
               </mat-tab>
 
+              <!-- PAGO -->
               <mat-tab>
                 <ng-template mat-tab-label>
-                  <mat-icon>account_balance</mat-icon> <span class="ml-8">Pago</span>
+                  <mat-icon class="tab-icon">account_balance</mat-icon>
+                  <span class="tab-label-text">Pago</span>
                 </ng-template>
+
                 <div class="tab-pane">
-                  <div class="pago-box">
-                    <div class="bank-details">
-                      <div class="detail-row"><span class="lbl">IBAN:</span> <strong>ES00 0000 0000 0000 0000 0000</strong></div>
-                      <div class="detail-row"><span class="lbl">Concepto:</span> <strong>{{ ot.codigo }}</strong></div>
+                  <div class="pago-container-compact">
+                    <div class="bank-info-mini">
+                      <span class="bank-label">IBAN PARA TRANSFERENCIA</span>
+
+                      <div class="bank-row">
+                        <span class="bank-value">ES00 0000 0000 0000 0000 0000</span>
+                        <button
+                          mat-icon-button
+                          (click)="copyToClipboard('ES0000000000000000000000')"
+                          class="btn-copy-tiny"
+                          aria-label="Copiar IBAN">
+                          <mat-icon>content_copy</mat-icon>
+                        </button>
+                      </div>
                     </div>
-                    
-                    <button mat-stroked-button class="btn-full" (click)="marcarTransferencia(ot.id)" [disabled]="actionBusy()">
-                      Ya he realizado la transferencia
+
+                    <button
+                      mat-flat-button
+                      class="btn-main btn-main-sm w100"
+                      (click)="marcarTransferencia(ot.id)"
+                      [disabled]="actionBusy()">
+                      Confirmar Transferencia
                     </button>
 
-                    <div class="upload-zone">
-                      <label class="drop-area">
+                    <div class="upload-minimal-box">
+                      <label class="file-label-pro">
                         <input type="file" hidden (change)="onPagoFileSelected($event)" />
-                        <mat-icon>cloud_upload</mat-icon>
-                        <div class="text">
-                          <span class="strong">{{ pagoFile() ? pagoFile()!.name : 'Subir Comprobante' }}</span>
-                          <span class="tiny">PDF o Imagen</span>
-                        </div>
+                        <mat-icon>attach_file</mat-icon>
+                        <span class="truncate">
+                          {{ pagoFile() ? pagoFile()!.name : 'Comprobante' }}
+                        </span>
                       </label>
-                      <button mat-flat-button class="btn-main" (click)="uploadComprobante(ot.id)" [disabled]="!pagoFile() || actionBusy()">
-                        Enviar Archivo
-                      </button>
-                    </div>
 
-                    <div class="comprobante-link" *ngIf="comprobanteHref() as href">
-                      <mat-icon>attachment</mat-icon>
-                      <a [href]="href" target="_blank">Ver comprobante enviado</a>
+                      <button
+                        mat-button
+                        class="btn-send-flat"
+                        (click)="uploadComprobante(ot.id)"
+                        [disabled]="!pagoFile() || actionBusy()">
+                        Enviar
+                      </button>
                     </div>
                   </div>
                 </div>
@@ -237,48 +429,83 @@
             </mat-tab-group>
           </mat-card>
 
-          <mat-card class="rs-card chat-card">
+          <!-- CHAT -->
+          <mat-card class="rs-card chat-card" #chatSection>
             <mat-card-header class="header-compact">
-              <mat-card-title class="rs-mini"><mat-icon>forum</mat-icon> Centro de Mensajes</mat-card-title>
+              <mat-card-title class="rs-mini chat-title-wrap">
+                <span class="chat-title-left">
+                  <mat-icon>forum</mat-icon>
+                  <span>Mensajes</span>
+                </span>
+
+                <span class="header-counter" *ngIf="quickUnreadCount() > 0">
+                  {{ quickUnreadCount() }}
+                </span>
+              </mat-card-title>
             </mat-card-header>
+
             <mat-card-content class="chat-container">
+              <ng-container *ngIf="quickUnreadCount() > 0">
+                <div class="chat-preview-banner" *ngIf="lastIncomingMessage() as lm">
+                  <mat-icon>mark_chat_unread</mat-icon>
+                  <div class="chat-preview-copy">
+                    <div class="chat-preview-title">
+                      {{ quickUnreadCount() }} {{ quickUnreadCount() === 1 ? 'mensaje nuevo' : 'mensajes nuevos' }}
+                    </div>
+                    <div class="chat-preview-text truncate">
+                      {{ lm.remitenteNombre || 'Administrador' }}: {{ lm.contenido }}
+                    </div>
+                  </div>
+                </div>
+              </ng-container>
+
               <div class="chat-messages" #chatScroll>
-                <ng-container *ngIf="ot.mensajes.length; else emptyChat">
-                  <div class="msg-bubble" *ngFor="let m of ot.mensajes; trackBy: trackById" [class.me]="isClienteMsg(m)">
-                    <div class="msg-meta" *ngIf="!isClienteMsg(m)">{{ m.remitenteNombre }}</div>
-                    <div class="msg-text">{{ m.contenido }}</div>
-                    <div class="msg-time">{{ m.createdAt | date:'HH:mm' }}</div>
-                  </div>
-                </ng-container>
-                <ng-template #emptyChat>
-                  <div class="empty-state">
-                    <p>Inicia una conversación con el taller</p>
-                  </div>
-                </ng-template>
+                <div
+                  class="msg-bubble"
+                  *ngFor="let m of ot.mensajes; trackBy: trackById"
+                  [class.me]="isClienteMsg(m)">
+                  <div class="msg-meta" *ngIf="!isClienteMsg(m)">{{ m.remitenteNombre }}</div>
+                  <div class="msg-text">{{ m.contenido }}</div>
+                  <div class="msg-time">{{ m.createdAt | date:'HH:mm' }}</div>
+                </div>
               </div>
+
               <div class="chat-input-row">
-                <input type="text" placeholder="Escribe un mensaje..." [formControl]="msgForm.controls.contenido" (keydown.enter)="sendMsgOt(ot.id)" />
-                <button mat-icon-button (click)="sendMsgOt(ot.id)" [disabled]="msgForm.invalid || actionBusy()">
+                <input
+                  type="text"
+                  placeholder="Escribe a tu técnico..."
+                  [formControl]="msgForm.controls.contenido"
+                  (keydown.enter)="sendMsgOt(ot.id)" />
+                <button
+                  mat-icon-button
+                  (click)="sendMsgOt(ot.id)"
+                  [disabled]="msgForm.invalid || actionBusy()"
+                  aria-label="Enviar mensaje">
                   <mat-icon>send</mat-icon>
                 </button>
               </div>
             </mat-card-content>
           </mat-card>
-
         </div>
       </ng-container>
 
+      <!-- WELCOME -->
       <ng-template #welcomeState>
-        <div class="welcome-hero">
-          <div class="hero-icon"><mat-icon>handshake</mat-icon></div>
-          <h1>¡Bienvenido a ReparaSuite!</h1>
-          <p>Selecciona una orden de trabajo de la izquierda para ver su progreso o crea un nuevo ticket de soporte para empezar.</p>
-          <button mat-flat-button class="btn-main-lg" (click)="openNewTicket()">
-            <mat-icon>add</mat-icon> Crear mi primera solicitud
-          </button>
+        <div class="welcome-hero-container">
+          <mat-card class="rs-card welcome-main-card">
+            <div class="welcome-hero">
+              <div class="hero-icon"><mat-icon>handshake</mat-icon></div>
+              <h1>¡Bienvenido a ReparaSuite!</h1>
+              <p>Selecciona una orden de trabajo para comenzar.</p>
+
+              <button mat-flat-button color="primary" class="btn-main" (click)="openNewTicket()">
+                <mat-icon>add</mat-icon>
+                Crear Nuevo Ticket
+              </button>
+            </div>
+          </mat-card>
         </div>
       </ng-template>
     </main>
-
   </div>
 </div>

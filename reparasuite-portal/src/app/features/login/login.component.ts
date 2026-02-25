@@ -15,33 +15,44 @@ import { AuthService } from '../../core/auth.service';
   selector: 'app-login',
   standalone: true,
   imports: [
-    ReactiveFormsModule, CommonModule,
-    MatCardModule, MatFormFieldModule, MatInputModule, MatButtonModule, MatIconModule
+    ReactiveFormsModule, 
+    CommonModule,
+    MatCardModule, 
+    MatFormFieldModule, 
+    MatInputModule, 
+    MatButtonModule, 
+    MatIconModule
   ],
   templateUrl: './login.component.html',
   styleUrls: ['./login.component.scss']
 })
 export class LoginComponent {
   private fb = inject(FormBuilder);
+  private auth = inject(AuthService);
+  private router = inject(Router);
 
   loading = false;
   error = '';
+  hidePassword = true;
 
   form = this.fb.group({
     email: ['', [Validators.required, Validators.email]],
-    password: ['', [Validators.required]]
+    password: ['', [Validators.required, Validators.minLength(6)]]
   });
 
-  constructor(private auth: AuthService, private router: Router) {}
-
   async onSubmit() {
+    if (this.form.invalid || this.loading) return;
+
     this.error = '';
     this.loading = true;
+
     try {
-      await this.auth.login(this.form.value.email!, this.form.value.password!);
+      const { email, password } = this.form.value;
+      await this.auth.login(email!, password!);
       this.router.navigateByUrl('/app');
-    } catch {
-      this.error = 'Credenciales inválidas';
+    } catch (err) {
+      this.error = 'Credenciales inválidas o error de conexión';
+      console.error('Login error:', err);
     } finally {
       this.loading = false;
     }

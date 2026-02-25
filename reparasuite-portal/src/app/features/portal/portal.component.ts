@@ -1,6 +1,16 @@
-import { Component, signal, inject, computed, ViewChild, ElementRef, AfterViewChecked } from '@angular/core';
+import {
+  Component,
+  signal,
+  inject,
+  computed,
+  ViewChild,
+  ElementRef,
+  AfterViewChecked,
+  ChangeDetectionStrategy
+} from '@angular/core';
+
 import { CommonModule } from '@angular/common';
-import { ReactiveFormsModule, FormBuilder, Validators, FormControl } from '@angular/forms';
+import { ReactiveFormsModule, FormBuilder, Validators } from '@angular/forms';
 import { Router } from '@angular/router';
 
 import { MatToolbarModule } from '@angular/material/toolbar';
@@ -20,6 +30,7 @@ import { MatNativeDateModule } from '@angular/material/core';
 import { MatTabsModule } from '@angular/material/tabs';
 import { MatSelectModule } from '@angular/material/select';
 import { MatTooltipModule } from '@angular/material/tooltip';
+import { MatExpansionModule } from '@angular/material/expansion';
 
 import { environment } from '../../../environments/environment';
 import { AuthService } from '../../core/auth.service';
@@ -31,7 +42,6 @@ import {
   OtDetalleDto,
   TicketListaItemDto,
   MensajeDto,
-  HistorialItemDto,
   CitaDto
 } from '../../core/models';
 
@@ -42,6 +52,7 @@ type StepKey = 'RECIBIDA' | 'PRESUPUESTO' | 'APROBADA' | 'EN_CURSO' | 'FINALIZAD
 @Component({
   selector: 'app-portal',
   standalone: true,
+  changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [
     CommonModule,
     ReactiveFormsModule,
@@ -50,16 +61,20 @@ type StepKey = 'RECIBIDA' | 'PRESUPUESTO' | 'APROBADA' | 'EN_CURSO' | 'FINALIZAD
     MatChipsModule, MatFormFieldModule, MatInputModule,
     MatSnackBarModule, MatDialogModule, MatCheckboxModule,
     MatDatepickerModule, MatNativeDateModule,
-    MatTabsModule, MatSelectModule, MatTooltipModule
+    MatTabsModule, MatSelectModule, MatExpansionModule, MatTooltipModule
   ],
   templateUrl: './portal.component.html',
   styleUrls: ['./portal.component.scss']
 })
 export class PortalComponent implements AfterViewChecked {
-  @ViewChild('chatScroll') private chatContainer!: ElementRef;
+  @ViewChild('chatScroll') private chatContainer?: ElementRef<HTMLDivElement>;
+  @ViewChild('gestionSection') private gestionSection?: ElementRef<HTMLElement>;
+  @ViewChild('chatSection') private chatSection?: ElementRef<HTMLElement>;
 
   apiBase = environment.apiBaseUrl;
-  private fb = inject(FormBuilder);
+
+  private readonly fb = inject(FormBuilder);
+  private readonly _snackBar = inject(MatSnackBar);
 
   loading = signal(false);
   actionBusy = signal(false);
@@ -76,7 +91,7 @@ export class PortalComponent implements AfterViewChecked {
   });
 
   citaInicioFecha = signal<Date | null>(null);
-  citaInicioHora = signal<string>(''); 
+  citaInicioHora = signal<string>('');
   citaDuracionMinutos = 60;
 
   pagoFile = signal<File | null>(null);
@@ -92,13 +107,21 @@ export class PortalComponent implements AfterViewChecked {
 
   stepIndex = computed(() => {
     const estado = (this.selectedOtDetalle()?.estado || '').toUpperCase();
+
     const map: Record<string, StepKey> = {
-      'RECIBIDA': 'RECIBIDA', 'NUEVA': 'RECIBIDA',
-      'PRESUPUESTO': 'PRESUPUESTO', 'ENVIADO': 'PRESUPUESTO',
-      'APROBADA': 'APROBADA', 'ACEPTADO': 'APROBADA',
-      'EN_CURSO': 'EN_CURSO', 'REPARANDO': 'EN_CURSO',
-      'FINALIZADA': 'FINALIZADA', 'TERMINADA': 'FINALIZADA', 'LISTO': 'FINALIZADA'
+      RECIBIDA: 'RECIBIDA',
+      NUEVA: 'RECIBIDA',
+      PRESUPUESTO: 'PRESUPUESTO',
+      ENVIADO: 'PRESUPUESTO',
+      APROBADA: 'APROBADA',
+      ACEPTADO: 'APROBADA',
+      EN_CURSO: 'EN_CURSO',
+      REPARANDO: 'EN_CURSO',
+      FINALIZADA: 'FINALIZADA',
+      TERMINADA: 'FINALIZADA',
+      LISTO: 'FINALIZADA'
     };
+
     const key = map[estado] ?? 'RECIBIDA';
     return Math.max(0, this.steps.findIndex(s => s.key === key));
   });
@@ -107,52 +130,186 @@ export class PortalComponent implements AfterViewChecked {
     const ot = this.selectedOtDetalle();
     const citas = ot?.citas ?? [];
     if (!citas.length) return null;
+
     const sorted = [...citas].sort((a, b) => (a.inicio || '').localeCompare(b.inicio || ''));
     return sorted[0] ?? null;
   });
 
   comprobanteHref = computed<string | null>(() => {
     const ot = this.selectedOtDetalle();
-    const url = ot?.pago?.comprobanteUrl ?? null;
+    const url = (ot as any)?.pago?.comprobanteUrl ?? null;
     if (!url) return null;
+
     if (/^https?:\/\//i.test(url)) return url;
+
     const base = (this.apiBase || '').replace(/\/$/, '');
     const path = url.startsWith('/') ? url : `/${url}`;
     return `${base}${path}`;
   });
 
+  // ---------- QUICK ACTIONS / ACTIVIDAD ----------
+  lastIncomingMessage = computed<MensajeDto | null>(() => {
+    const ot = this.selectedOtDetalle();
+    const mensajes = ot?.mensajes ?? [];
+    const incoming = [...mensajes].reverse().find((m) => !this.isClienteMsg(m));
+    return incoming ?? null;
+  });
+
+  quickUnreadCount = computed<number>(() => {
+    const ot = this.selectedOtDetalle();
+    const mensajes = ot?.mensajes ?? [];
+    if (!mensajes.length) return 0;
+
+    const incoming = mensajes.filter((m) => !this.isClienteMsg(m));
+    if (!incoming.length) return 0;
+
+    // Si backend expone flags de lectura, usarlos
+    const msgsWithReadInfo = incoming.filter((m) => this.readFlagForClient(m) !== undefined);
+    if (msgsWithReadInfo.length > 0) {
+      return msgsWithReadInfo.filter((m) => this.readFlagForClient(m) === false).length;
+    }
+
+    // Fallback heurístico: mensajes del taller posteriores al último mensaje del cliente
+    let lastClientMsgIndex = -1;
+    mensajes.forEach((m, index) => {
+      if (this.isClienteMsg(m)) lastClientMsgIndex = index;
+    });
+
+    return mensajes.slice(lastClientMsgIndex + 1).filter((m) => !this.isClienteMsg(m)).length;
+  });
+
+  showPagoQuickAction = computed<boolean>(() => {
+    const ot = this.selectedOtDetalle();
+    if (!ot) return false;
+    return !!ot.presupuesto || !!(ot as any)?.pago;
+  });
+
+  isPagoPendienteQuick = computed<boolean>(() => {
+    const ot = this.selectedOtDetalle();
+    if (!ot) return false;
+
+    const estadoPago = String((ot as any)?.pago?.estado || '').toUpperCase();
+    const estadosPendientes = [
+      'PENDIENTE',
+      'ENVIADO',
+      'POR_PAGAR',
+      'PAGO_PENDIENTE',
+      'TRANSFERENCIA_PENDIENTE',
+      'PENDIENTE_CONFIRMACION'
+    ];
+
+    if (estadoPago && estadosPendientes.includes(estadoPago)) return true;
+
+    const estadoPres = String(ot.presupuesto?.estado || '').toUpperCase();
+    const estadosPresupuestoRelevantes = ['ENVIADO', 'APROBADA', 'ACEPTADO'];
+    const pagoConfirmado = ['CONFIRMADO', 'VALIDADO', 'PAGADO', 'COMPLETADO'].includes(estadoPago);
+
+    return !!ot.presupuesto && estadosPresupuestoRelevantes.includes(estadoPres) && !pagoConfirmado;
+  });
+
+  quickPagoLabel = computed<string>(() => {
+    const ot = this.selectedOtDetalle();
+    if (!ot) return 'Sin datos';
+
+    const estadoPago = String((ot as any)?.pago?.estado || '').toUpperCase();
+    if (estadoPago) return this.prettifyEstado(estadoPago);
+
+    if (this.isPagoPendienteQuick()) return 'Pendiente';
+    return 'Disponible';
+  });
+
+  quickPagoMeta = computed<string>(() => {
+    const ot = this.selectedOtDetalle();
+    if (!ot) return 'Revisa métodos de pago';
+
+    const comprobante = (ot as any)?.pago?.comprobanteUrl;
+    if (comprobante) return 'Comprobante cargado';
+
+    if (this.isPagoPendienteQuick()) return 'Confirmar transferencia / subir comprobante';
+    return 'Ver instrucciones y estado';
+  });
+
   constructor(
-    private auth: AuthService,
-    private otService: OtService,
-    private ticketsService: TicketsService,
-    private snack: MatSnackBar,
-    private router: Router,
-    private dialog: MatDialog
+    private readonly auth: AuthService,
+    private readonly otService: OtService,
+    private readonly ticketsService: TicketsService,
+    private readonly snack: MatSnackBar,
+    private readonly router: Router,
+    private readonly dialog: MatDialog
   ) {
     this.refreshAll();
   }
 
-  ngAfterViewChecked() {
+  ngAfterViewChecked(): void {
     this.scrollToBottom();
   }
 
   private scrollToBottom(): void {
     try {
-      if (this.chatContainer) {
-        this.chatContainer.nativeElement.scrollTop = this.chatContainer.nativeElement.scrollHeight;
-      }
-    } catch (err) {}
+      const el = this.chatContainer?.nativeElement;
+      if (!el) return;
+      el.scrollTop = el.scrollHeight;
+    } catch {
+      // noop
+    }
   }
 
-  trackById(_: number, item: any) {
-    return item?.id ?? item?.codigo ?? item?.fecha ?? item?.createdAt ?? _;
+  private readFlagForClient(m: MensajeDto): boolean | undefined {
+    const msg = m as any;
+
+    const candidates = [
+      msg?.leidoCliente,
+      msg?.leidoPorCliente,
+      msg?.readByClient,
+      msg?.isReadByClient,
+      msg?.leido
+    ];
+
+    const found = candidates.find((v: any) => typeof v === 'boolean');
+    return typeof found === 'boolean' ? found : undefined;
+  }
+
+  private prettifyEstado(raw: string): string {
+    return raw
+      .toLowerCase()
+      .split('_')
+      .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+      .join(' ');
+  }
+
+  private smoothScrollTo(ref?: ElementRef<HTMLElement>, center = false): void {
+    const el = ref?.nativeElement;
+    if (!el) return;
+
+    try {
+      el.scrollIntoView({
+        behavior: 'smooth',
+        block: center ? 'center' : 'start',
+        inline: 'nearest'
+      });
+    } catch {
+      el.scrollIntoView();
+    }
+  }
+
+  openGestionTab(index: number): void {
+    this.gestionTabIndex.set(index);
+    setTimeout(() => this.smoothScrollTo(this.gestionSection), 30);
+  }
+
+  goToChat(): void {
+    setTimeout(() => this.smoothScrollTo(this.chatSection, false), 20);
+  }
+
+  trackById(index: number, item: any): any {
+    return item?.id ?? item?.codigo ?? item?.fecha ?? item?.createdAt ?? index;
   }
 
   selectedOtCodigo(): string | null {
     return this.selectedOtDetalle()?.codigo ?? null;
   }
 
-  refreshDetalle() {
+  refreshDetalle(): void {
     const ot = this.selectedOtDetalle();
     if (!ot) return;
     this.loadDetalle(ot.codigo);
@@ -162,20 +319,23 @@ export class PortalComponent implements AfterViewChecked {
     return (m.remitenteTipo || '').toUpperCase() === 'CLIENTE';
   }
 
-  async refreshAll() {
+  async refreshAll(): Promise<void> {
     await Promise.all([this.loadOts(), this.loadTickets()]);
   }
 
-  async loadOts() {
+  async loadOts(): Promise<void> {
     const clienteId = this.auth.getClienteId();
     if (!clienteId) return;
+
     this.loading.set(true);
     try {
       const res = await this.otService.listarMisOts(clienteId, 0, 50);
       this.ots.set(res.items);
+
       if (!this.selectedOtCodigoSignal() && res.items.length > 0) {
         this.selectedOtCodigoSignal.set(res.items[0].codigo);
       }
+
       if (!this.selectedOtDetalle() && res.items.length > 0) {
         await this.loadDetalle(res.items[0].codigo);
       }
@@ -186,24 +346,27 @@ export class PortalComponent implements AfterViewChecked {
     }
   }
 
-  async selectOt(ot: ClienteOtItemDto) {
+  async selectOt(ot: ClienteOtItemDto): Promise<void> {
     this.selectedOtCodigoSignal.set(ot.codigo);
     await this.loadDetalle(ot.codigo);
   }
 
-  async onOtSelectChange(codigo: string) {
+  async onOtSelectChange(codigo: string): Promise<void> {
     if (!codigo) return;
     this.selectedOtCodigoSignal.set(codigo);
     await this.loadDetalle(codigo);
   }
 
-  async loadDetalle(idOrCodigo: string) {
+  async loadDetalle(idOrCodigo: string): Promise<void> {
     this.loading.set(true);
     try {
       const d = await this.otService.obtenerDetalle(idOrCodigo);
       this.selectedOtDetalle.set(d);
       this.aceptoCheck.set(false);
-      if (d?.citas?.length) this.gestionTabIndex.set(1);
+
+      if (d?.citas?.length) {
+        this.gestionTabIndex.set(1);
+      }
     } catch {
       this.snack.open('No se pudo cargar el detalle de la OT', 'OK', { duration: 2500 });
     } finally {
@@ -211,13 +374,13 @@ export class PortalComponent implements AfterViewChecked {
     }
   }
 
-  logout() {
+  logout(): void {
     this.auth.logout();
     this.router.navigateByUrl('/login');
   }
 
   // --- TICKETS ---
-  async loadTickets() {
+  async loadTickets(): Promise<void> {
     this.loading.set(true);
     try {
       const res = await this.ticketsService.listar(0, 50);
@@ -229,18 +392,19 @@ export class PortalComponent implements AfterViewChecked {
     }
   }
 
-  openNewTicket() {
+  openNewTicket(): void {
     const ref = this.dialog.open(TicketDialogComponent, {
       width: '640px',
       maxWidth: '92vw',
       data: { mode: 'new' }
     });
+
     ref.afterClosed().subscribe(async (ok: boolean) => {
       if (ok) await this.loadTickets();
     });
   }
 
-  async openTicket(ticketId: string) {
+  async openTicket(ticketId: string): Promise<void> {
     try {
       const detail = await this.ticketsService.obtener(ticketId);
       const ref = this.dialog.open(TicketDialogComponent, {
@@ -248,6 +412,7 @@ export class PortalComponent implements AfterViewChecked {
         maxWidth: '92vw',
         data: { mode: 'view', ticket: detail }
       });
+
       ref.afterClosed().subscribe(async (ok: boolean) => {
         if (ok) await this.loadTickets();
       });
@@ -257,8 +422,9 @@ export class PortalComponent implements AfterViewChecked {
   }
 
   // --- ACCIONES OT ---
-  async aceptar(otId: string) {
+  async aceptar(otId: string): Promise<void> {
     if (!this.aceptoCheck()) return;
+
     this.actionBusy.set(true);
     try {
       await this.otService.aceptarPresupuesto(otId);
@@ -271,7 +437,7 @@ export class PortalComponent implements AfterViewChecked {
     }
   }
 
-  async rechazar(otId: string) {
+  async rechazar(otId: string): Promise<void> {
     this.actionBusy.set(true);
     try {
       await this.otService.rechazarPresupuesto(otId);
@@ -284,7 +450,7 @@ export class PortalComponent implements AfterViewChecked {
     }
   }
 
-  async marcarTransferencia(otId: string) {
+  async marcarTransferencia(otId: string): Promise<void> {
     this.actionBusy.set(true);
     try {
       await this.otService.marcarTransferencia(otId);
@@ -297,14 +463,25 @@ export class PortalComponent implements AfterViewChecked {
     }
   }
 
-  onPagoFileSelected(ev: Event) {
+  onPagoFileSelected(ev: Event): void {
     const input = ev.target as HTMLInputElement;
     this.pagoFile.set(input.files?.[0] ?? null);
   }
 
-  async uploadComprobante(otId: string) {
+  copyToClipboard(text: string): void {
+    navigator.clipboard.writeText(text)
+      .then(() => {
+        this._snackBar.open('Copiado al portapapeles', 'Cerrar', { duration: 2000 });
+      })
+      .catch(() => {
+        this._snackBar.open('No se pudo copiar', 'Cerrar', { duration: 2000 });
+      });
+  }
+
+  async uploadComprobante(otId: string): Promise<void> {
     const f = this.pagoFile();
     if (!f) return;
+
     this.actionBusy.set(true);
     try {
       await this.otService.subirComprobantePago(otId, f);
@@ -318,8 +495,9 @@ export class PortalComponent implements AfterViewChecked {
     }
   }
 
-  async sendMsgOt(otId: string) {
+  async sendMsgOt(otId: string): Promise<void> {
     if (this.msgForm.invalid) return;
+
     const contenido = (this.msgForm.value.contenido ?? '').trim();
     if (!contenido) return;
 

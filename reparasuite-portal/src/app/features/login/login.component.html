@@ -1,34 +1,69 @@
-<div class="wrap">
-  <mat-card>
-    <mat-card-header>
-      <mat-card-title>Portal Cliente</mat-card-title>
-      <mat-card-subtitle>Accede a tus servicios</mat-card-subtitle>
-    </mat-card-header>
+<div class="auth-container">
+  <div class="auth-hero">
+    <div class="hero-content">
+      <div class="top-badge">Portal Oficial</div>
+      <h1 class="hero-title">Descubre tu <br><span>Portal Cliente</span></h1>
+      <p class="hero-subtitle">Explora un mundo de servicios por línea y de la mano con la tecnología.</p>
+      <div class="hero-buttons">
+        <button mat-button class="btn-outline">Información</button>
+        <button mat-button class="btn-outline">Registrar</button>
+      </div>
+    </div>
+  </div>
 
-    <mat-card-content>
-      <form [formGroup]="form" (ngSubmit)="onSubmit()">
-        <mat-form-field appearance="outline" class="w100">
-          <mat-label>Email</mat-label>
-          <input matInput formControlName="email" type="email" autocomplete="email" />
-        </mat-form-field>
-
-        <mat-form-field appearance="outline" class="w100">
-          <mat-label>Password</mat-label>
-          <input matInput formControlName="password" type="password" autocomplete="current-password" />
-        </mat-form-field>
-
-        <div class="muted" *ngIf="error">{{ error }}</div>
-
-        <div class="actions">
-          <button mat-flat-button color="primary" type="submit" [disabled]="form.invalid || loading">
-            {{ loading ? 'Entrando…' : 'Entrar' }}
-          </button>
+  <div class="auth-form-side">
+    <mat-card class="login-card">
+      <div class="login-header">
+        <div class="main-logo-container">
+          <mat-icon>terminal</mat-icon>
         </div>
+        <h2>Iniciar Sesión</h2>
+        <p>¡Bienvenido de nuevo! Te extrañamos.</p>
+      </div>
 
-<div class="muted demo">
-  Demo: <b>maria&#64;mail.com</b> / <b>cliente123</b>
-</div>
-      </form>
-    </mat-card-content>
-  </mat-card>
+      <mat-card-content>
+        <form [formGroup]="form" (ngSubmit)="onSubmit()" class="login-form">
+          
+          <mat-form-field appearance="outline" class="custom-pill-input">
+            <mat-label>Email</mat-label>
+            <input matInput formControlName="email" type="email" placeholder="ejemplo@mail.com" />
+          </mat-form-field>
+
+          <mat-form-field appearance="outline" class="custom-pill-input">
+            <mat-label>Contraseña</mat-label>
+            <input matInput [type]="hidePassword ? 'password' : 'text'" formControlName="password" />
+          </mat-form-field>
+
+          <div class="forgot-password-box">
+            <a href="#">¿Olvidaste tu contraseña?</a>
+          </div>
+
+          <button mat-flat-button class="btn-figma-pro" [disabled]="form.invalid || loading">
+            @if (!loading) { Entrar } @else { ... }
+          </button>
+
+          <div class="divider">
+            <span>O continuar con</span>
+          </div>
+
+          <div class="social-auth-row">
+            <button type="button" class="social-btn">
+              <img src="https://www.google.com/favicon.ico" alt="Google" width="20">
+            </button>
+            <button type="button" class="social-btn">
+              <mat-icon>facebook</mat-icon>
+            </button>
+            <button type="button" class="social-btn">
+              <mat-icon>apple</mat-icon>
+            </button>
+          </div>
+
+          <div class="test-account-card">
+            <p>CUENTA DE PRUEBA</p>
+            <code>maria&#64;mail.com / cliente123</code>
+          </div>
+        </form>
+      </mat-card-content>
+    </mat-card>
+  </div>
 </div>
