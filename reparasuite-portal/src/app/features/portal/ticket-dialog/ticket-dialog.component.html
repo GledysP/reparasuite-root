@@ -1,83 +1,203 @@
-<div class="pro-ticket-container">
-  <header class="pro-header">
-    <div class="title-wrap">
-      <div class="icon-box">
-        <mat-icon>add_task</mat-icon>
+<div class="rs-ticket">
+  <header class="rs-header">
+    <div class="rs-title">
+      <div class="rs-icon" aria-hidden="true">
+        <mat-icon fontSet="material-symbols-outlined">add_task</mat-icon>
       </div>
-      <div>
-        <h1>Nueva solicitud de soporte</h1>
-        <p class="subtitle">Completa los datos para que podamos ayudarte.</p>
+
+      <div class="rs-title-text">
+        <h1>Nueva solicitud</h1>
+
+        <p>Soporte técnico · Completa los datos para asignarte un técnico.</p>
       </div>
     </div>
-    <button mat-icon-button mat-dialog-close class="close-btn">
-      <mat-icon>close</mat-icon>
+
+    <button
+      mat-icon-button
+      mat-dialog-close
+      class="rs-close"
+      aria-label="Cerrar"
+    >
+      <mat-icon fontSet="material-symbols-outlined">close</mat-icon>
     </button>
   </header>
 
-  <mat-dialog-content class="pro-body">
-    <form [formGroup]="form" class="pro-form">
-      
-      <div class="pro-row">
-        <mat-form-field appearance="outline" class="flex-2">
+  <mat-dialog-content class="rs-body">
+    <form [formGroup]="form" class="rs-form" (ngSubmit)="crear()">
+      <div class="rs-grid">
+        <mat-form-field
+          appearance="outline"
+          class="rs-field rs-field--soft"
+          [class.rs-invalid]="isInvalid('equipo')"
+          [class.rs-shake]="isInvalid('equipo') && shakeTick()"
+        >
           <mat-label>Equipo</mat-label>
-          <input matInput formControlName="equipo" placeholder="Ej: Laptop Lenovo / TV Samsung">
-          <mat-icon matPrefix>devices</mat-icon>
+
+          <mat-icon matPrefix fontSet="material-symbols-outlined"
+            >devices</mat-icon
+          >
+
+          <input
+            matInput
+            formControlName="equipo"
+            placeholder="Ej: Laptop Lenovo / TV Samsung"
+            autocomplete="off"
+          />
+
+          <mat-hint>Modelo o referencia.</mat-hint>
         </mat-form-field>
 
-        <mat-form-field appearance="outline" class="flex-1">
+        <mat-form-field appearance="outline" class="rs-field rs-field--soft">
           <mat-label>Tipo de servicio</mat-label>
-          <mat-select formControlName="tipoServicioSugerido">
-            <mat-option value="">Sin Tienda</mat-option>
-            <mat-option value="TIENDA">En Tienda</mat-option>
+
+          <mat-select
+            formControlName="tipoServicioSugerido"
+            [panelClass]="'rs-ticket-select-panel'"
+          >
+            <mat-option value="TIENDA">En Taller</mat-option>
+
             <mat-option value="DOMICILIO">A Domicilio</mat-option>
           </mat-select>
+
+          <mat-hint>Opcional.</mat-hint>
         </mat-form-field>
       </div>
 
-      <mat-form-field appearance="outline" class="w100">
-        <mat-label>Descripción de la falla*</mat-label>
-        <textarea matInput formControlName="descripcionFalla" rows="3" placeholder="¿Qué problema presenta el equipo?"></textarea>
+      <mat-form-field
+        appearance="outline"
+        class="rs-field rs-field--soft w100"
+        [class.rs-invalid]="isInvalid('descripcionFalla')"
+        [class.rs-shake]="isInvalid('descripcionFalla') && shakeTick()"
+      >
+        <mat-label>Descripción de la falla</mat-label>
+
+        <textarea
+          matInput
+          formControlName="descripcionFalla"
+          rows="3"
+          placeholder="Describe el problema…"
+        ></textarea>
+
+        <mat-hint>Breve y específica.</mat-hint>
       </mat-form-field>
 
-      <mat-form-field appearance="outline" class="w100">
-        <mat-label>Dirección / ubicación (opcional)</mat-label>
-        <textarea matInput formControlName="direccion" rows="2" placeholder="Solo si requiere recogida"></textarea>
-        <mat-icon matPrefix>location_on</mat-icon>
+      <mat-form-field appearance="outline" class="rs-field rs-field--soft w100">
+        <mat-label>Dirección / ubicación</mat-label>
+
+        <mat-icon matPrefix fontSet="material-symbols-outlined"
+          >location_on</mat-icon
+        >
+
+        <textarea
+          matInput
+          formControlName="direccion"
+          rows="2"
+          placeholder="Solo si requiere recogida"
+        ></textarea>
+
+        <mat-hint>Opcional.</mat-hint>
       </mat-form-field>
 
-      <mat-form-field appearance="outline" class="w100">
-        <mat-label>Observaciones (opcional)</mat-label>
-        <textarea matInput formControlName="observaciones" rows="2" placeholder="Detalles adicionales para el técnico"></textarea>
+      <mat-form-field appearance="outline" class="rs-field rs-field--soft w100">
+        <mat-label>Observaciones</mat-label>
+
+        <textarea
+          matInput
+          formControlName="observaciones"
+          rows="2"
+          placeholder="Detalles adicionales"
+        ></textarea>
+
+        <mat-hint>Opcional.</mat-hint>
       </mat-form-field>
 
-      <div class="upload-card" [class.has-file]="selectedFile()">
-        <div class="upload-info">
-          <span class="upload-title">Foto del equipo / falla (opcional)</span>
-          <span class="upload-sub">Ayuda al taller a revisar mejor tu caso.</span>
+      <!-- Dropzone compacta Pro -->
+
+      <div
+        class="rs-dropzone"
+        [class.is-active]="dragActive()"
+        [class.has-file]="selectedFile()"
+        role="button"
+        tabindex="0"
+        (click)="fileInput.click()"
+        (keydown.enter)="fileInput.click()"
+        (keydown.space)="fileInput.click()"
+        (dragover)="onDragOver($event)"
+        (dragleave)="onDragLeave($event)"
+        (drop)="onDrop($event)"
+      >
+        <input
+          type="file"
+          #fileInput
+          hidden
+          (change)="onFileSelected($event)"
+          accept="image/*"
+          capture="environment"
+        />
+
+        <div class="dz-icon" aria-hidden="true">
+          <mat-icon fontSet="material-symbols-outlined">
+            {{ selectedFile() ? "check_circle" : "photo_camera" }}
+          </mat-icon>
         </div>
-        
-        <input type="file" #fileInput hidden (change)="onFileSelected($event)" accept="image/*">
-        
-        <button type="button" mat-flat-button class="btn-upload" (click)="fileInput.click()">
-          <mat-icon>{{ selectedFile() ? 'check_circle' : 'photo_camera' }}</mat-icon>
-          <span>{{ selectedFile() ? selectedFile()?.name : 'Seleccionar foto' }}</span>
+
+        <div class="dz-text">
+          <div class="dz-title">
+            {{ selectedFile() ? "Archivo listo" : "Adjuntar foto" }}
+
+            <span class="dz-chip" *ngIf="selectedFile()">Listo</span>
+          </div>
+
+          <div class="dz-sub">
+            {{
+              selectedFile()
+                ? selectedFile()?.name
+                : "Arrastra aquí o toca para seleccionar"
+            }}
+          </div>
+        </div>
+
+        <button
+          *ngIf="selectedFile()"
+          type="button"
+          mat-icon-button
+          class="dz-clear"
+          aria-label="Quitar archivo"
+          (click)="$event.stopPropagation(); clearFile()"
+        >
+          <mat-icon fontSet="material-symbols-outlined">close</mat-icon>
         </button>
       </div>
 
-      <div class="pro-banner">
-        <mat-icon>info_outline</mat-icon>
-        <p>El tipo de servicio es <strong>opcional</strong>. Puedes enviar tu solicitud y luego <strong>chatear con el taller</strong> para acordar detalles.</p>
+      <div class="rs-info">
+        <mat-icon aria-hidden="true" fontSet="material-symbols-outlined"
+          >info</mat-icon
+        >
+
+        <p>
+          Puedes enviar la solicitud y luego chatear con el taller para acordar
+          detalles.
+        </p>
       </div>
+
+      <!-- submit hidden para Enter -->
+
+      <button type="submit" hidden></button>
     </form>
   </mat-dialog-content>
 
-  <mat-dialog-actions align="end" class="pro-actions">
+  <mat-dialog-actions class="rs-actions">
     <button mat-button mat-dialog-close class="btn-secondary">Cerrar</button>
-    <button mat-flat-button class="btn-primary" 
-            [disabled]="form.invalid || loading()" 
-            (click)="crear()">
+
+    <button
+      mat-flat-button
+      class="btn-primary"
+      [disabled]="form.disabled || loading()"
+      (click)="crear()"
+    >
       <span *ngIf="!loading()">Enviar solicitud</span>
-      <mat-spinner *ngIf="loading()" diameter="20"></mat-spinner>
+
+      <mat-spinner *ngIf="loading()" diameter="18"></mat-spinner>
     </button>
   </mat-dialog-actions>
 </div>

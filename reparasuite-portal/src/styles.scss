@@ -1,4 +1,113 @@
-/* You can add global styles to this file, and also import other style files */
+/* styles.scss */
 
 html, body { height: 100%; }
 body { margin: 0; font-family: Roboto, "Helvetica Neue", sans-serif; }
+
+/* Material Symbols Outlined (si usas fontSet="material-symbols-outlined") */
+.material-symbols-outlined {
+  font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 20;
+  line-height: 1;
+}
+
+/* =========================================================
+   Ticket Dialog Overlay (panelClass base + mobile)
+   ========================================================= */
+
+@keyframes rsDialogIn {
+  from { transform: translateY(10px); opacity: 0; }
+  to   { transform: translateY(0); opacity: 1; }
+}
+
+/* Base: centra en desktop */
+.cdk-overlay-pane.rs-ticket-dialog {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* Desktop surface elegante */
+.cdk-overlay-pane.rs-ticket-dialog .mat-mdc-dialog-surface {
+  padding: 0 !important;
+  overflow: hidden !important;
+
+  width: min(620px, 92vw) !important;
+  max-width: 620px !important;
+  max-height: min(86vh, 760px) !important;
+
+  border-radius: 20px !important;
+
+  box-shadow:
+    0 26px 70px rgba(15, 23, 42, 0.14),
+    0 10px 22px rgba(15, 23, 42, 0.10) !important;
+
+  animation: rsDialogIn 200ms cubic-bezier(.2,.9,.2,1) both;
+}
+
+/* Quita el max-height default del contenido para que flex funcione */
+.cdk-overlay-pane.rs-ticket-dialog .mat-mdc-dialog-content {
+  max-height: none !important;
+}
+
+/* Fix notch/label “raya” SOLO dentro del dialog */
+.cdk-overlay-pane.rs-ticket-dialog .mdc-floating-label {
+  background: transparent !important;
+  padding: 0 6px !important;
+}
+
+/* Oculta el asterisco de required SOLO dentro del dialog */
+.cdk-overlay-pane.rs-ticket-dialog .mat-mdc-form-field-required-marker {
+  display: none !important;
+}
+
+/* Select panel Pro (sin azul default) SOLO ticket */
+.rs-ticket-select-panel.mat-mdc-select-panel {
+  background: #fff !important;
+  border-radius: 14px !important;
+  padding: 6px 0 !important;
+  border: 1px solid rgba(15, 23, 42, 0.08) !important;
+  box-shadow: 0 18px 40px rgba(15, 23, 42, 0.14) !important;
+}
+
+.rs-ticket-select-panel .mat-mdc-option.mdc-list-item--selected,
+.rs-ticket-select-panel .mat-mdc-option.mat-mdc-option-active {
+  background: rgba(18, 78, 89, 0.08) !important;
+}
+
+/* =========================================================
+   FULLSCREEN REAL en móvil (activo con rs-ticket-dialog--mobile)
+   ========================================================= */
+
+.cdk-overlay-pane.rs-ticket-dialog--mobile {
+  position: fixed !important;
+  inset: 0 !important;
+
+  width: 100vw !important;
+  height: 100dvh !important;
+  max-width: 100vw !important;
+  max-height: 100dvh !important;
+
+  margin: 0 !important;
+  transform: none !important;
+
+  align-items: stretch !important;
+  justify-content: stretch !important;
+}
+
+/* Surface ocupa todo el viewport */
+.cdk-overlay-pane.rs-ticket-dialog--mobile .mat-mdc-dialog-surface {
+  width: 100% !important;
+  max-width: 100% !important;
+  height: 100% !important;
+  max-height: 100% !important;
+
+  border-radius: 0 !important;
+  box-shadow: none !important;
+
+  animation: none !important;
+}
+
+.cdk-overlay-pane.rs-ticket-dialog--mobile .mat-mdc-dialog-container,
+.cdk-overlay-pane.rs-ticket-dialog--mobile .mdc-dialog__container {
+  width: 100% !important;
+  height: 100% !important;
+}

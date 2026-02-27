@@ -5,11 +5,15 @@ import {
   computed,
   ViewChild,
   ElementRef,
-  AfterViewChecked
+  AfterViewChecked,
+  OnInit,
+  OnDestroy
 } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { ReactiveFormsModule, FormBuilder, Validators } from '@angular/forms';
 import { Router } from '@angular/router';
+
+import { BreakpointObserver } from '@angular/cdk/layout';
 
 import { MatToolbarModule } from '@angular/material/toolbar';
 import { MatButtonModule } from '@angular/material/button';
@@ -39,6 +43,7 @@ import {
   ClienteOtItemDto,
   OtDetalleDto,
   TicketListaItemDto,
+  TicketDetalleDto,
   MensajeDto,
   CitaDto
 } from '../../core/models';
@@ -46,14 +51,16 @@ import {
 import { TicketDialogComponent } from './ticket-dialog/ticket-dialog.component';
 
 type StepKey = 'RECIBIDA' | 'PRESUPUESTO' | 'APROBADA' | 'EN_CURSO' | 'FINALIZADA';
-type SmartActionTarget = 'presupuesto' | 'citas' | 'pago' | 'chat';
 
-interface SmartNextStepUi {
-  title: string;
-  cta: string;
-  icon: string;
-  action: SmartActionTarget;
-}
+type LoadOpts = {
+  silent?: boolean;
+  quiet?: boolean;
+  preserveSelection?: boolean;
+  autoLoadDetalle?: boolean;
+  forceScroll?: boolean;
+  animate?: boolean;
+  autoNavTabs?: boolean;
+};
 
 @Component({
   selector: 'app-portal',
@@ -71,14 +78,17 @@ interface SmartNextStepUi {
   templateUrl: './portal.component.html',
   styleUrls: ['./portal.component.scss']
 })
-export class PortalComponent implements AfterViewChecked {
-  @ViewChild('chatScroll') private chatContainer!: ElementRef<HTMLElement>;
+export class PortalComponent implements OnInit, OnDestroy, AfterViewChecked {
+  @ViewChild('chatScroll') private chatContainer!: ElementRef<HTMLDivElement>;
   @ViewChild('chatCardRef') private chatCardRef?: ElementRef<HTMLElement>;
-  @ViewChild('servicesCardRef') private servicesCardRef?: ElementRef<HTMLElement>;
+  @ViewChild('gestionCardTop') private gestionCardRef?: ElementRef<HTMLElement>;
+  @ViewChild('chatInput') private chatInput?: ElementRef<HTMLInputElement>;
 
   apiBase = environment.apiBaseUrl;
+
   private fb = inject(FormBuilder);
-  private _snackBar = inject(MatSnackBar);
+  private snackBar = inject(MatSnackBar);
+  private bp = inject(BreakpointObserver);
 
   loading = signal(false);
   actionBusy = signal(false);
@@ -90,6 +100,15 @@ export class PortalComponent implements AfterViewChecked {
   selectedOtCodigoSignal = signal<string | null>(null);
   aceptoCheck = signal(false);
 
+  pagoFile = signal<File | null>(null);
+  gestionTabIndex = signal(0);
+
+  detailFade = signal(false);
+
+  // Estado bonito post-creación
+  pendingTicket = signal<TicketDetalleDto | null>(null);
+  private pendingBeforeOtCodes: Set<string> | null = null;
+
   msgForm = this.fb.group({
     contenido: ['', [Validators.required, Validators.minLength(1)]]
   });
@@ -97,9 +116,6 @@ export class PortalComponent implements AfterViewChecked {
   citaInicioFecha = signal<Date | null>(null);
   citaInicioHora = signal<string>('');
   citaDuracionMinutos = 60;
-
-  pagoFile = signal<File | null>(null);
-  gestionTabIndex = signal(0);
 
   readonly steps: { key: StepKey; label: string; icon: string }[] = [
     { key: 'RECIBIDA', label: 'Recibida', icon: 'inventory_2' },
@@ -109,18 +125,91 @@ export class PortalComponent implements AfterViewChecked {
     { key: 'FINALIZADA', label: 'Finalizada', icon: 'task_alt' }
   ];
 
-  stepIndex = computed(() => {
-    const estado = (this.selectedOtDetalle()?.estado || '').toUpperCase();
-    const map: Record<string, StepKey> = {
-      'RECIBIDA': 'RECIBIDA', 'NUEVA': 'RECIBIDA',
-      'PRESUPUESTO': 'PRESUPUESTO', 'ENVIADO': 'PRESUPUESTO',
-      'APROBADA': 'APROBADA', 'ACEPTADO': 'APROBADA',
-      'EN_CURSO': 'EN_CURSO', 'REPARANDO': 'EN_CURSO',
-      'FINALIZADA': 'FINALIZADA', 'TERMINADA': 'FINALIZADA', 'LISTO': 'FINALIZADA'
-    };
-    const key = map[estado] ?? 'RECIBIDA';
-    return Math.max(0, this.steps.findIndex(s => s.key === key));
-  });
+  private readonly stepRank: Record<StepKey, number> = {
+    RECIBIDA: 0,
+    PRESUPUESTO: 1,
+    APROBADA: 2,
+    EN_CURSO: 3,
+    FINALIZADA: 4
+  };
+
+  constructor(
+    private auth: AuthService,
+    private otService: OtService,
+    private ticketsService: TicketsService,
+    private router: Router,
+    private dialog: MatDialog
+  ) {
+    this.refreshAll();
+  }
+
+  ngOnInit(): void {
+    this.pollHandle = setInterval(() => {
+      this.silentRefreshTick();
+    }, 30_000);
+  }
+
+  ngOnDestroy(): void {
+    if (this.pollHandle) clearInterval(this.pollHandle);
+    this.pollHandle = null;
+    this.stopFastAwait();
+  }
+
+  // =========================================================
+  // Estados / normalización
+  // =========================================================
+  private normalizeStatus(value?: string | null): string {
+    return (value ?? '')
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .trim()
+      .toUpperCase()
+      .replace(/[\s-]+/g, '_');
+  }
+
+  private stepFromOtEstado(estadoRaw?: string | null): StepKey {
+    const e = this.normalizeStatus(estadoRaw);
+
+    if (['NUEVA', 'RECIBIDA', 'RECIBIDO', 'CREADA', 'REGISTRADA'].includes(e)) return 'RECIBIDA';
+
+    if (['PRESUPUESTO', 'ENVIADO', 'COTIZACION', 'COTIZACION_ENVIADA'].includes(e) || e.includes('PRESUP')) {
+      return 'PRESUPUESTO';
+    }
+
+    if (['APROBADA', 'ACEPTADO', 'APROBADO', 'ACEPTADA'].includes(e) || e.includes('APROB') || e.includes('ACEPT')) {
+      return 'APROBADA';
+    }
+
+    if (['EN_CURSO', 'REPARANDO', 'EN_REPARACION', 'REPARACION', 'EN_PROCESO'].includes(e) || e.includes('CURSO') || e.includes('REPAR')) {
+      return 'EN_CURSO';
+    }
+
+    if (['FINALIZADA', 'LISTO', 'TERMINADA', 'FINALIZADO', 'ENTREGADA', 'ENTREGADO'].includes(e) || e.includes('FINAL') || e.includes('TERMIN') || e.includes('LIST')) {
+      return 'FINALIZADA';
+    }
+
+    return 'RECIBIDA';
+  }
+
+  private resolveBusinessStep(ot: OtDetalleDto | null): StepKey {
+    if (!ot) return 'RECIBIDA';
+
+    const otKey = this.stepFromOtEstado(ot.estado);
+    const pres = this.normalizeStatus(ot.presupuesto?.estado);
+
+    // Regla crítica
+    if (['ENVIADO', 'PENDIENTE'].includes(pres)) return 'PRESUPUESTO';
+
+    if (['APROBADA', 'ACEPTADO', 'APROBADO', 'ACEPTADA'].includes(pres)) {
+      return this.stepRank[otKey] >= this.stepRank['APROBADA'] ? otKey : 'APROBADA';
+    }
+
+    return otKey;
+  }
+
+  stepKey = computed<StepKey>(() => this.resolveBusinessStep(this.selectedOtDetalle()));
+  stepIndex = computed(() => this.stepRank[this.stepKey()]);
+  currentStepLabel = computed(() => this.steps[this.stepIndex()]?.label ?? 'Recibida');
 
   nextCita = computed<CitaDto | null>(() => {
     const ot = this.selectedOtDetalle();
@@ -130,388 +219,432 @@ export class PortalComponent implements AfterViewChecked {
     return sorted[0] ?? null;
   });
 
-  comprobanteHref = computed<string | null>(() => {
-    const ot = this.selectedOtDetalle();
-    const url = (ot as any)?.pago?.comprobanteUrl ?? null;
-    if (!url) return null;
-    if (/^https?:\/\//i.test(url)) return url;
-    const base = (this.apiBase || '').replace(/\/$/, '');
-    const path = url.startsWith('/') ? url : `/${url}`;
-    return `${base}${path}`;
-  });
-
-  // ===========================
-  // QUICK ACTIONS / NOTIFICACIONES
-  // ===========================
   quickUnreadCount = computed<number>(() => {
-    const ot = this.selectedOtDetalle();
-    const mensajes = ot?.mensajes ?? [];
-    if (!mensajes.length) return 0;
-
-    // No existe estado real "leído/no leído" en tu modelo actual.
-    // Usamos un proxy visual: últimos mensajes NO cliente (máximo 9).
-    const externos = mensajes.filter(m => !this.isClienteMsg(m));
-    return Math.min(externos.length, 9);
+    const msgs = this.selectedOtDetalle()?.mensajes ?? [];
+    return msgs.filter(m => !this.isClienteMsg(m)).length;
   });
 
-  quickMessagesPrimaryText = computed<string>(() => {
-    const count = this.quickUnreadCount();
-    if (count > 0) return `${count} mensaje${count === 1 ? '' : 's'} nuevo${count === 1 ? '' : 's'}`;
-    return 'Sin novedades';
-  });
-
-  quickMessagesSecondaryText = computed<string>(() => {
-    const ot = this.selectedOtDetalle();
-    const mensajes = ot?.mensajes ?? [];
-    if (!mensajes.length) return 'Sin conversación';
-    const last = mensajes[mensajes.length - 1];
-    const remitente = this.isClienteMsg(last) ? 'Tú' : (last.remitenteNombre || 'Técnico');
-    const hora = this.formatTime(last.createdAt);
-    return hora ? `${remitente} · ${hora}` : remitente;
-  });
-
-  quickBudgetPrimaryText = computed<string>(() => {
+  quickPresupuestoValue = computed<string>(() => {
     const p = this.selectedOtDetalle()?.presupuesto;
     if (!p) return 'Sin presupuesto';
 
-    const importe = typeof p.importe === 'number'
+    const amount = typeof p.importe === 'number'
       ? `€ ${p.importe.toFixed(2).replace('.', ',')}`
-      : 'Presupuesto disponible';
+      : 'Presupuesto';
 
-    return importe;
+    const estado = this.normalizeStatus(p.estado);
+    if (['APROBADA', 'ACEPTADO', 'APROBADO', 'ACEPTADA'].includes(estado)) return amount;
+    if (estado === 'ENVIADO') return amount;
+    if (estado === 'PENDIENTE') return 'Pendiente';
+    return p.estado || amount;
   });
 
-  quickBudgetSecondaryText = computed<string>(() => {
-    const p = this.selectedOtDetalle()?.presupuesto;
-    if (!p) return 'Esperando valoración';
-    return (p.estado || 'Pendiente').toString();
-  });
-
-  showQuickPago = computed<boolean>(() => {
-    const ot = this.selectedOtDetalle();
-    return !!ot; // mostrar siempre que haya OT seleccionada (más consistente)
-  });
-
-  isPagoPendiente = computed<boolean>(() => {
+  quickHasPendingPago = computed<boolean>(() => {
     const ot = this.selectedOtDetalle() as any;
-    const pagoEstado = (ot?.pago?.estado || '').toString().toUpperCase();
-    if (pagoEstado.includes('PEND')) return true;
+    if (!ot) return false;
 
-    // Proxy UX: si hay presupuesto aprobado/enviado y no comprobante aún, sugerir pago
-    const presEstado = (ot?.presupuesto?.estado || '').toString().toUpperCase();
-    const tienePresupuesto = !!ot?.presupuesto;
-    const pagoNoRegistrado = !ot?.pago || !ot?.pago?.comprobanteUrl;
-    return tienePresupuesto && ['APROBADA', 'ACEPTADO', 'ENVIADO'].includes(presEstado) && pagoNoRegistrado;
+    const presupuestoEstado = this.normalizeStatus(ot.presupuesto?.estado);
+    const pagoEstado = this.normalizeStatus(ot.pago?.estado);
+
+    const presupuestoListo = ['APROBADA', 'ACEPTADO', 'APROBADO', 'ACEPTADA'].includes(presupuestoEstado);
+    const pagoPendiente = !['CONFIRMADO', 'VALIDADO', 'PAGADO', 'COMPLETADO'].includes(pagoEstado);
+
+    return presupuestoListo && pagoPendiente;
   });
 
-  quickPaymentPrimaryText = computed<string>(() => {
+  quickPagoValue = computed<string>(() => {
     const ot = this.selectedOtDetalle() as any;
-    const pagoEstado = (ot?.pago?.estado || '').toString();
-    if (pagoEstado) return pagoEstado;
-    return this.isPagoPendiente() ? 'Pendiente' : 'Sin pago registrado';
+    if (!ot) return 'Sin datos';
+    const pagoEstado = this.normalizeStatus(ot.pago?.estado);
+    if (pagoEstado) {
+      if (['CONFIRMADO', 'VALIDADO', 'PAGADO', 'COMPLETADO'].includes(pagoEstado)) return 'Confirmado';
+      return ot.pago?.estado || 'Pago';
+    }
+    return this.quickHasPendingPago() ? 'Pendiente' : 'Sin acción';
   });
 
-  quickPaymentSecondaryText = computed<string>(() => {
-    const ot = this.selectedOtDetalle() as any;
-    if (ot?.pago?.comprobanteUrl) return 'Comprobante disponible';
-    if (this.isPagoPendiente()) return 'Confirmar transferencia / subir comprobante';
-    return 'Sin acción pendiente';
-  });
+  // =========================================================
+  // Polling automático
+  // =========================================================
+  private pollHandle: ReturnType<typeof setInterval> | null = null;
+  private silentInFlight = false;
 
-  // Estado inteligente (compacto, no card grande)
-  smartNextStep = computed<SmartNextStepUi | null>(() => {
-    const ot = this.selectedOtDetalle() as any;
-    if (!ot) return null;
+  private fastAwaitHandle: ReturnType<typeof setInterval> | null = null;
+  private fastAwaitUntil = 0;
 
-    const presEstado = (ot?.presupuesto?.estado || '').toString().toUpperCase();
-    const pagoEstado = (ot?.pago?.estado || '').toString().toUpperCase();
-    const tieneCita = Array.isArray(ot?.citas) && ot.citas.length > 0;
-
-    if (presEstado === 'ENVIADO') {
-      return {
-        title: 'Revisar y responder presupuesto',
-        cta: 'Ir a presupuesto',
-        icon: 'payments',
-        action: 'presupuesto'
-      };
-    }
-
-    if (!tieneCita && (ot?.estado || '').toString().toUpperCase() !== 'FINALIZADA') {
-      return {
-        title: 'Consultar próxima cita del servicio',
-        cta: 'Ir a citas',
-        icon: 'event',
-        action: 'citas'
-      };
-    }
-
-    if (this.isPagoPendiente() || pagoEstado.includes('PEND')) {
-      return {
-        title: 'Confirmar transferencia y subir comprobante',
-        cta: 'Ir a pago',
-        icon: 'account_balance',
-        action: 'pago'
-      };
-    }
-
-    if ((ot?.mensajes?.length ?? 0) > 0) {
-      return {
-        title: 'Revisar mensajes del técnico',
-        cta: 'Ir a mensajes',
-        icon: 'chat_bubble_outline',
-        action: 'chat'
-      };
-    }
-
-    return null;
-  });
-
-  constructor(
-    private auth: AuthService,
-    private otService: OtService,
-    private ticketsService: TicketsService,
-    private snack: MatSnackBar,
-    private router: Router,
-    private dialog: MatDialog
-  ) {
-    this.refreshAll();
+  private stopFastAwait() {
+    if (this.fastAwaitHandle) clearInterval(this.fastAwaitHandle);
+    this.fastAwaitHandle = null;
+    this.fastAwaitUntil = 0;
   }
 
+  private startFastAwait() {
+    this.stopFastAwait();
+    this.fastAwaitUntil = Date.now() + 60_000;
+    this.fastAwaitHandle = setInterval(() => {
+      this.fastAwaitTick();
+    }, 3000);
+
+    this.fastAwaitTick();
+  }
+
+  private async fastAwaitTick(): Promise<void> {
+    if (!this.pendingTicket() || !this.pendingBeforeOtCodes) {
+      this.stopFastAwait();
+      return;
+    }
+
+    if (Date.now() > this.fastAwaitUntil) {
+      this.stopFastAwait();
+      return;
+    }
+
+    await this.tryDetectAndOpenNewOt({ silent: true, quiet: true });
+  }
+
+  private async silentRefreshTick(): Promise<void> {
+    if (this.silentInFlight) return;
+    if (this.loading() || this.actionBusy()) return;
+
+    const codigo = this.selectedOtCodigoSignal() ?? this.selectedOtDetalle()?.codigo ?? null;
+    const hasPending = !!this.pendingTicket();
+
+    if (!codigo && !this.ots().length && !hasPending) return;
+
+    this.silentInFlight = true;
+    try {
+      await this.loadOts({ silent: true, quiet: true, preserveSelection: true, autoLoadDetalle: false });
+
+      if (hasPending) {
+        const opened = await this.tryDetectAndOpenNewOt({ silent: true, quiet: true });
+        if (opened) return;
+      }
+
+      const codigoFinal = this.selectedOtCodigoSignal() ?? codigo;
+      if (codigoFinal) {
+        await this.loadDetalle(codigoFinal, {
+          silent: true,
+          quiet: true,
+          forceScroll: false,
+          animate: false,
+          autoNavTabs: false
+        });
+      }
+    } finally {
+      this.silentInFlight = false;
+    }
+  }
+
+  private findNewOtCodigo(before: Set<string>, after: ClienteOtItemDto[]): string | null {
+    const created = after.find(o => o?.codigo && !before.has(o.codigo));
+    return created?.codigo ?? null;
+  }
+
+  private async tryDetectAndOpenNewOt(opts: { silent: boolean; quiet: boolean }): Promise<boolean> {
+    if (!this.pendingTicket() || !this.pendingBeforeOtCodes) return false;
+
+    await this.loadOts({ silent: opts.silent, quiet: opts.quiet, preserveSelection: true, autoLoadDetalle: false });
+
+    const newCodigo = this.findNewOtCodigo(this.pendingBeforeOtCodes, this.ots());
+    if (!newCodigo) return false;
+
+    this.selectedOtCodigoSignal.set(newCodigo);
+    await this.loadDetalle(newCodigo, {
+      silent: true,
+      quiet: true,
+      forceScroll: true,
+      animate: true,
+      autoNavTabs: true
+    });
+
+    this.pendingTicket.set(null);
+    this.pendingBeforeOtCodes = null;
+    this.stopFastAwait();
+
+    this.snackBar.open('✓ Orden disponible. Abriendo detalle…', undefined, {
+      duration: 1600,
+      panelClass: ['rs-snack-pro'],
+      verticalPosition: 'bottom',
+      horizontalPosition: 'center'
+    });
+
+    return true;
+  }
+
+  // =========================================================
+  // Scroll chat inteligente
+  // =========================================================
+  private scrollRequested = false;
+  private scrollForce = false;
+
   ngAfterViewChecked() {
-    this.scrollToBottom();
+    if (!this.scrollRequested) return;
+
+    if (this.scrollForce || this.isChatNearBottom(90)) {
+      this.scrollToBottom();
+    }
+
+    this.scrollRequested = false;
+    this.scrollForce = false;
+  }
+
+  private requestScroll(force = false) {
+    this.scrollForce = force;
+    this.scrollRequested = true;
+  }
+
+  private isChatNearBottom(thresholdPx = 80): boolean {
+    try {
+      const el = this.chatContainer?.nativeElement;
+      if (!el) return true;
+      const dist = el.scrollHeight - el.scrollTop - el.clientHeight;
+      return dist < thresholdPx;
+    } catch {
+      return true;
+    }
   }
 
   private scrollToBottom(): void {
     try {
-      if (this.chatContainer?.nativeElement) {
-        this.chatContainer.nativeElement.scrollTop = this.chatContainer.nativeElement.scrollHeight;
-      }
-    } catch {
-      // noop
-    }
+      const el = this.chatContainer?.nativeElement;
+      if (!el) return;
+      el.scrollTop = el.scrollHeight;
+    } catch {}
   }
 
-  private formatTime(value?: string | Date | null): string {
-    if (!value) return '';
-    const d = new Date(value);
-    if (isNaN(d.getTime())) return '';
-    return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  private triggerFadeIn(): void {
+    this.detailFade.set(false);
+    queueMicrotask(() => {
+      this.detailFade.set(true);
+      setTimeout(() => this.detailFade.set(false), 260);
+    });
   }
 
-  trackById(_: number, item: any) {
-    return item?.id ?? item?.codigo ?? item?.fecha ?? item?.createdAt ?? _;
+  // =========================================================
+  // Actions
+  // =========================================================
+  openHowItWorks(): void {
+    this.snackBar.open(
+      'Cómo funciona: crea tu solicitud, el taller la revisa y cuando la acepte la orden aparecerá aquí automáticamente.',
+      'Cerrar',
+      { duration: 5000, panelClass: ['rs-snack-pro'] }
+    );
+  }
+
+  trackById(index: number, item: any) {
+    return item?.id ?? item?.codigo ?? item?.fecha ?? item?.createdAt ?? index;
   }
 
   selectedOtCodigo(): string | null {
     return this.selectedOtDetalle()?.codigo ?? null;
   }
 
-  refreshDetalle() {
-    const ot = this.selectedOtDetalle();
-    if (!ot) return;
-    this.loadDetalle(ot.codigo);
-  }
-
   isClienteMsg(m: MensajeDto): boolean {
-    return (m.remitenteTipo || '').toUpperCase() === 'CLIENTE';
+    return this.normalizeStatus(m.remitenteTipo) === 'CLIENTE';
   }
 
   goToGestionTab(index: number) {
     this.gestionTabIndex.set(index);
+    queueMicrotask(() => {
+      this.gestionCardRef?.nativeElement?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    });
   }
 
-  goToChat() {
-    // En desktop/móvil lleva visualmente al card de chat
-    setTimeout(() => {
+  focusMessages() {
+    queueMicrotask(() => {
       this.chatCardRef?.nativeElement?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-    }, 0);
-  }
-
-  onSmartNextStep(action: SmartActionTarget) {
-    switch (action) {
-      case 'presupuesto':
-        this.goToGestionTab(0);
-        break;
-      case 'citas':
-        this.goToGestionTab(1);
-        break;
-      case 'pago':
-        this.goToGestionTab(2);
-        break;
-      case 'chat':
-        this.goToChat();
-        break;
-      default:
-        break;
-    }
-  }
-
-  scrollToServicesCard() {
-    setTimeout(() => {
-      this.servicesCardRef?.nativeElement?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-    }, 0);
-  }
-
-  showHowItWorks() {
-    this.snack.open(
-      '1) Selecciona una orden. 2) Revisa estado, citas y presupuesto. 3) Usa Mensajes para comunicarte con el taller.',
-      'OK',
-      { duration: 4200 }
-    );
+      this.requestScroll(true);
+      setTimeout(() => this.chatInput?.nativeElement?.focus(), 220);
+    });
   }
 
   async refreshAll() {
-    await Promise.all([this.loadOts(), this.loadTickets()]);
+    await Promise.all([
+      this.loadOts({ preserveSelection: true, autoLoadDetalle: true }),
+      this.loadTickets()
+    ]);
   }
 
-  async loadOts() {
+  async loadOts(opts: LoadOpts = {}) {
     const clienteId = this.auth.getClienteId();
     if (!clienteId) return;
 
-    this.loading.set(true);
+    const showSpinner = !opts.silent;
+    if (showSpinner) this.loading.set(true);
+
     try {
       const res = await this.otService.listarMisOts(clienteId, 0, 50);
       this.ots.set(res.items);
 
-      if (!this.selectedOtCodigoSignal() && res.items.length > 0) {
-        this.selectedOtCodigoSignal.set(res.items[0].codigo);
-      }
+      const wanted = opts.preserveSelection
+        ? (this.selectedOtCodigoSignal() ?? this.selectedOtDetalle()?.codigo ?? null)
+        : (this.selectedOtCodigoSignal() ?? null);
 
-      if (!this.selectedOtDetalle() && res.items.length > 0) {
-        await this.loadDetalle(res.items[0].codigo);
+      const exists = !!wanted && res.items.some(o => o.codigo === wanted);
+      const nextCodigo = exists ? wanted : (res.items[0]?.codigo ?? null);
+
+      this.selectedOtCodigoSignal.set(nextCodigo);
+
+      if (opts.autoLoadDetalle !== false) {
+        const shouldLoad = !this.selectedOtDetalle() || (nextCodigo && this.selectedOtDetalle()?.codigo !== nextCodigo);
+        if (shouldLoad && nextCodigo) {
+          await this.loadDetalle(nextCodigo, {
+            silent: true,
+            quiet: opts.quiet,
+            forceScroll: true,
+            animate: true,
+            autoNavTabs: true
+          });
+        }
       }
     } catch {
-      this.snack.open('No se pudieron cargar las órdenes', 'OK', { duration: 2500 });
+      if (!opts.quiet) {
+        this.snackBar.open('No se pudieron cargar las órdenes', 'Cerrar', {
+          duration: 2500,
+          panelClass: ['rs-snack-pro']
+        });
+      }
     } finally {
-      this.loading.set(false);
+      if (showSpinner) this.loading.set(false);
     }
   }
 
-  async selectOt(ot: ClienteOtItemDto) {
-    this.selectedOtCodigoSignal.set(ot.codigo);
-    await this.loadDetalle(ot.codigo);
-  }
+  async loadDetalle(idOrCodigo: string, opts: LoadOpts = {}) {
+    const showSpinner = !opts.silent;
+    if (showSpinner) this.loading.set(true);
 
-  async onOtSelectChange(codigo: string) {
-    if (!codigo) return;
-    this.selectedOtCodigoSignal.set(codigo);
-    await this.loadDetalle(codigo);
-  }
-
-  async loadDetalle(idOrCodigo: string) {
-    this.loading.set(true);
     try {
+      const prevCodigo = this.selectedOtDetalle()?.codigo ?? null;
+
       const d = await this.otService.obtenerDetalle(idOrCodigo);
       this.selectedOtDetalle.set(d);
-      this.aceptoCheck.set(false);
 
-      // UX: si hay citas, abre tab de citas. Si hay pago pendiente, abre pago.
-      const anyD = d as any;
-      const pagoPend = ((anyD?.pago?.estado || '').toString().toUpperCase().includes('PEND'));
-      if (d?.citas?.length) {
-        this.gestionTabIndex.set(1);
+      if (d?.codigo) this.selectedOtCodigoSignal.set(d.codigo);
+
+      const sameOt = !!prevCodigo && !!d?.codigo && prevCodigo === d.codigo;
+
+      if (!opts.silent && !sameOt) this.aceptoCheck.set(false);
+
+      if (opts.autoNavTabs !== false && !opts.silent && !sameOt) {
+        if (d?.citas?.length) this.gestionTabIndex.set(1);
       }
-      if (pagoPend) {
-        this.gestionTabIndex.set(2);
-      }
+
+      this.requestScroll(!!opts.forceScroll);
+      if (opts.animate) this.triggerFadeIn();
     } catch {
-      this.snack.open('No se pudo cargar el detalle de la OT', 'OK', { duration: 2500 });
+      if (!opts.quiet) {
+        this.snackBar.open('No se pudo cargar el detalle de la OT', 'Cerrar', {
+          duration: 2500,
+          panelClass: ['rs-snack-pro']
+        });
+      }
     } finally {
-      this.loading.set(false);
+      if (showSpinner) this.loading.set(false);
     }
   }
 
-  logout() {
-    this.auth.logout();
-    this.router.navigateByUrl('/login');
-  }
+  async loadTickets(opts: LoadOpts = {}) {
+    const showSpinner = !opts.silent;
+    if (showSpinner) this.loading.set(true);
 
-  // ===========================
-  // TICKETS
-  // ===========================
-  async loadTickets() {
-    this.loading.set(true);
     try {
       const res = await this.ticketsService.listar(0, 50);
       this.tickets.set(res.items);
     } catch {
-      this.snack.open('No se pudieron cargar los tickets', 'OK', { duration: 2500 });
+      if (!opts.quiet) {
+        this.snackBar.open('No se pudieron cargar los tickets', 'Cerrar', {
+          duration: 2500,
+          panelClass: ['rs-snack-pro']
+        });
+      }
     } finally {
-      this.loading.set(false);
+      if (showSpinner) this.loading.set(false);
     }
   }
 
-  openNewTicket() {
-    const ref = this.dialog.open(TicketDialogComponent, {
-      width: '640px',
-      maxWidth: '92vw',
-      data: { mode: 'new' }
-    });
+  private ticketDialogConfig(data: any) {
+    const isMobile = this.bp.isMatched('(max-width: 640px)');
 
-    ref.afterClosed().subscribe(async (ok: boolean) => {
-      if (ok) await this.loadTickets();
+    return isMobile
+      ? {
+          data,
+          panelClass: ['rs-ticket-dialog', 'rs-ticket-dialog--mobile'],
+          autoFocus: false,
+          restoreFocus: true,
+          width: '100vw',
+          maxWidth: '100vw',
+          height: '100dvh',
+          maxHeight: '100dvh',
+          position: { top: '0', left: '0' }
+        }
+      : {
+          data,
+          panelClass: ['rs-ticket-dialog'],
+          autoFocus: false,
+          restoreFocus: true,
+          width: '620px',
+          maxWidth: '92vw'
+        };
+  }
+
+  openNewTicket() {
+    const beforeCodes = new Set(this.ots().map(o => o.codigo));
+
+    const ref = this.dialog.open(TicketDialogComponent, this.ticketDialogConfig({ mode: 'new' }));
+    ref.afterClosed().subscribe(async (ticket?: TicketDetalleDto) => {
+      if (!ticket) return;
+
+      this.pendingTicket.set(ticket);
+      this.pendingBeforeOtCodes = beforeCodes;
+
+      this.snackBar.open('✓ Solicitud enviada correctamente', undefined, {
+        duration: 1800,
+        panelClass: ['rs-snack-pro'],
+        verticalPosition: 'bottom',
+        horizontalPosition: 'center'
+      });
+
+      await Promise.all([
+        this.loadTickets({ silent: true, quiet: true }),
+        this.loadOts({ silent: true, quiet: true, preserveSelection: true, autoLoadDetalle: false })
+      ]);
+
+      const opened = await this.tryDetectAndOpenNewOt({ silent: true, quiet: true });
+      if (!opened) {
+        this.startFastAwait();
+      }
     });
   }
 
   async openTicket(ticketId: string) {
     try {
       const detail = await this.ticketsService.obtener(ticketId);
-      const ref = this.dialog.open(TicketDialogComponent, {
-        width: '720px',
-        maxWidth: '92vw',
-        data: { mode: 'view', ticket: detail }
+      this.dialog.open(
+        TicketDialogComponent,
+        this.ticketDialogConfig({ mode: 'view', ticket: detail })
+      );
+    } catch {
+      this.snackBar.open('No se pudo cargar el ticket', 'Cerrar', {
+        duration: 2500,
+        panelClass: ['rs-snack-pro']
       });
-
-      ref.afterClosed().subscribe(async (ok: boolean) => {
-        if (ok) await this.loadTickets();
-      });
-    } catch {
-      this.snack.open('No se pudo cargar el ticket', 'OK', { duration: 2500 });
     }
   }
 
-  // ===========================
-  // ACCIONES OT
-  // ===========================
-  async aceptar(otId: string) {
-    if (!this.aceptoCheck()) return;
-
-    this.actionBusy.set(true);
-    try {
-      await this.otService.aceptarPresupuesto(otId);
-      await this.loadDetalle(otId);
-      this.snack.open('Presupuesto aceptado', 'OK', { duration: 1500 });
-    } catch {
-      this.snack.open('Error al aceptar', 'OK', { duration: 2500 });
-    } finally {
-      this.actionBusy.set(false);
-    }
+  async selectOt(ot: ClienteOtItemDto) {
+    this.selectedOtCodigoSignal.set(ot.codigo);
+    await this.loadDetalle(ot.codigo, { forceScroll: true, animate: true, autoNavTabs: true });
   }
 
-  async rechazar(otId: string) {
-    this.actionBusy.set(true);
-    try {
-      await this.otService.rechazarPresupuesto(otId);
-      await this.loadDetalle(otId);
-      this.snack.open('Presupuesto rechazado', 'OK', { duration: 1500 });
-    } catch {
-      this.snack.open('Error al rechazar', 'OK', { duration: 2500 });
-    } finally {
-      this.actionBusy.set(false);
-    }
+  async onOtSelectChange(codigo: string) {
+    if (!codigo) return;
+    this.selectedOtCodigoSignal.set(codigo);
+    await this.loadDetalle(codigo, { forceScroll: true, animate: true, autoNavTabs: true });
   }
 
-  async marcarTransferencia(otId: string) {
-    this.actionBusy.set(true);
-    try {
-      await this.otService.marcarTransferencia(otId);
-      await this.loadDetalle(otId);
-      this.snack.open('Notificado como transferencia', 'OK', { duration: 1500 });
-    } catch {
-      this.snack.open('Error al marcar', 'OK', { duration: 2500 });
-    } finally {
-      this.actionBusy.set(false);
-    }
+  logout() {
+    this.auth.logout();
+    this.router.navigateByUrl('/login');
   }
 
   onPagoFileSelected(ev: Event) {
@@ -521,22 +654,88 @@ export class PortalComponent implements AfterViewChecked {
 
   copyToClipboard(text: string) {
     navigator.clipboard.writeText(text).then(() => {
-      this._snackBar.open('Copiado al portapapeles', 'Cerrar', { duration: 2000 });
+      this.snackBar.open('✓ Copiado al portapapeles', undefined, {
+        duration: 1400,
+        panelClass: ['rs-snack-pro']
+      });
     });
+  }
+
+  async aceptar(otId: string) {
+    if (!this.aceptoCheck()) return;
+    this.actionBusy.set(true);
+    try {
+      await this.otService.aceptarPresupuesto(otId);
+      await this.loadDetalle(otId, { forceScroll: false, animate: false });
+      this.snackBar.open('✓ Presupuesto aceptado', undefined, {
+        duration: 1400,
+        panelClass: ['rs-snack-pro']
+      });
+    } catch {
+      this.snackBar.open('Error al aceptar', 'Cerrar', {
+        duration: 2500,
+        panelClass: ['rs-snack-pro']
+      });
+    } finally {
+      this.actionBusy.set(false);
+    }
+  }
+
+  async rechazar(otId: string) {
+    this.actionBusy.set(true);
+    try {
+      await this.otService.rechazarPresupuesto(otId);
+      await this.loadDetalle(otId, { forceScroll: false, animate: false });
+      this.snackBar.open('✓ Presupuesto rechazado', undefined, {
+        duration: 1400,
+        panelClass: ['rs-snack-pro']
+      });
+    } catch {
+      this.snackBar.open('Error al rechazar', 'Cerrar', {
+        duration: 2500,
+        panelClass: ['rs-snack-pro']
+      });
+    } finally {
+      this.actionBusy.set(false);
+    }
+  }
+
+  async marcarTransferencia(otId: string) {
+    this.actionBusy.set(true);
+    try {
+      await this.otService.marcarTransferencia(otId);
+      await this.loadDetalle(otId, { forceScroll: false, animate: false });
+      this.snackBar.open('✓ Transferencia confirmada', undefined, {
+        duration: 1400,
+        panelClass: ['rs-snack-pro']
+      });
+    } catch {
+      this.snackBar.open('Error al marcar', 'Cerrar', {
+        duration: 2500,
+        panelClass: ['rs-snack-pro']
+      });
+    } finally {
+      this.actionBusy.set(false);
+    }
   }
 
   async uploadComprobante(otId: string) {
     const f = this.pagoFile();
     if (!f) return;
-
     this.actionBusy.set(true);
     try {
       await this.otService.subirComprobantePago(otId, f);
       this.pagoFile.set(null);
-      await this.loadDetalle(otId);
-      this.snack.open('Comprobante subido', 'OK', { duration: 1500 });
+      await this.loadDetalle(otId, { forceScroll: false, animate: false });
+      this.snackBar.open('✓ Comprobante subido', undefined, {
+        duration: 1400,
+        panelClass: ['rs-snack-pro']
+      });
     } catch {
-      this.snack.open('Error al subir', 'OK', { duration: 2500 });
+      this.snackBar.open('Error al subir', 'Cerrar', {
+        duration: 2500,
+        panelClass: ['rs-snack-pro']
+      });
     } finally {
       this.actionBusy.set(false);
     }
@@ -544,7 +743,6 @@ export class PortalComponent implements AfterViewChecked {
 
   async sendMsgOt(otId: string) {
     if (this.msgForm.invalid) return;
-
     const contenido = (this.msgForm.value.contenido ?? '').trim();
     if (!contenido) return;
 
@@ -552,9 +750,13 @@ export class PortalComponent implements AfterViewChecked {
     try {
       await this.otService.enviarMensaje(otId, contenido);
       this.msgForm.reset();
-      await this.loadDetalle(otId);
+      await this.loadDetalle(otId, { forceScroll: true, animate: false, autoNavTabs: false });
+      setTimeout(() => this.chatInput?.nativeElement?.focus(), 120);
     } catch {
-      this.snack.open('Error al enviar mensaje', 'OK', { duration: 2500 });
+      this.snackBar.open('Error al enviar mensaje', 'Cerrar', {
+        duration: 2500,
+        panelClass: ['rs-snack-pro']
+      });
     } finally {
       this.actionBusy.set(false);
     }
