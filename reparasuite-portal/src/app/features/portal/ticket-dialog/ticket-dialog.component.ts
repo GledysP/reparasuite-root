@@ -145,7 +145,6 @@ export class TicketDialogComponent {
         await this.ticketsService.subirFoto((ticket as any).id, this.selectedFile()!);
       }
 
-      // ✅ El portal gestiona el feedback visual y la espera de OT
       this.dialogRef.close(ticket);
     } catch {
       this.snack.open(
