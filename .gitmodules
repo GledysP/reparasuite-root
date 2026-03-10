@@ -4,3 +4,6 @@
 [submodule "reparasuite-api"]
 	path = reparasuite-api
 	url = https://github.com/GledysP/reparasuite-api.git
+[submodule "reparasuite-portal"]
+	path = reparasuite-portal
+	url = https://github.com/GledysP/reparasuite-portal.git
