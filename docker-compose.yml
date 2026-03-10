@@ -41,5 +41,15 @@ services:
     ports:
       - "4200:80"
 
+  portal:
+    build:
+      context: ./reparasuite-portal
+      dockerfile: Dockerfile
+    container_name: reparasuite-portal
+    depends_on:
+      - api
+    ports:
+      - "4300:80"
+
 volumes:
   reparasuite_db_data:
