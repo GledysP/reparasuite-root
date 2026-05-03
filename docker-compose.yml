@@ -2,55 +2,63 @@ services:
   db:
     image: postgres:16-alpine
     container_name: reparasuite-db
+    restart: always
     environment:
-      POSTGRES_DB: reparasuite
-      POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: "123456"
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
     ports:
-      - "5432:5432"
+      - "5432:5432" # En el futuro cerraremos este puerto por seguridad
     volumes:
       - reparasuite_db_data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U postgres -d reparasuite"]
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
       interval: 5s
       timeout: 3s
       retries: 20
 
   api:
-      build:
-        context: ./reparasuite-api
-        dockerfile: Dockerfile
-      container_name: reparasuite-api
-      depends_on:
-        db:
-          condition: service_healthy
-      environment:
-        DB_HOST: db
-        SPRING_PROFILES_ACTIVE: dev
-        SPRING_DATASOURCE_USERNAME: postgres
-        SPRING_DATASOURCE_PASSWORD: "123456"
-      ports:
-        - "8080:8080"
+    build:
+      context: ./reparasuite-api
+      dockerfile: Dockerfile
+    container_name: reparasuite-api
+    restart: always
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      # Le decimos a Spring que use el archivo application-prod.properties
+      SPRING_PROFILES_ACTIVE: prod
+      # Inyectamos las variables desde el archivo .env
+      REPARASUITE_DB_URL: ${REPARASUITE_DB_URL}
+      REPARASUITE_DB_USERNAME: ${REPARASUITE_DB_USERNAME}
+      REPARASUITE_DB_PASSWORD: ${REPARASUITE_DB_PASSWORD}
+      REPARASUITE_JWT_SECRET: ${REPARASUITE_JWT_SECRET}
+      REPARASUITE_CORS_ALLOWED_ORIGIN_PATTERNS: ${REPARASUITE_CORS_ALLOWED_ORIGIN_PATTERNS}
+    # NOTA ADMIN: Eliminamos el mapeo "8080:8080" para que internet no pueda acceder directo a la API. 
+    # Solo los frontends (que están en la misma red de docker) podrán verla.
 
   backoffice:
     build:
       context: ./reparasuite-backoffice
       dockerfile: Dockerfile
     container_name: reparasuite-backoffice
+    restart: always
     depends_on:
       - api
     ports:
-      - "4200:80"
+      - "80:80"   # El backoffice será la app principal al entrar a la IP
 
   portal:
     build:
       context: ./reparasuite-portal
       dockerfile: Dockerfile
     container_name: reparasuite-portal
+    restart: always
     depends_on:
       - api
     ports:
-      - "4300:80"
+      - "4300:80" # El portal de clientes vivirá en el puerto 4300
 
 volumes:
   reparasuite_db_data:
