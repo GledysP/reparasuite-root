@@ -17,19 +17,20 @@ services:
       retries: 20
 
   api:
-    build:
-      context: ./reparasuite-api
-      dockerfile: Dockerfile
-    container_name: reparasuite-api
-    depends_on:
-      db:
-        condition: service_healthy
-    environment:
-      SPRING_DATASOURCE_URL: jdbc:postgresql://db:5432/reparasuite
-      SPRING_DATASOURCE_USERNAME: postgres
-      SPRING_DATASOURCE_PASSWORD: "123456"
-    ports:
-      - "8080:8080"
+      build:
+        context: ./reparasuite-api
+        dockerfile: Dockerfile
+      container_name: reparasuite-api
+      depends_on:
+        db:
+          condition: service_healthy
+      environment:
+        DB_HOST: db
+        SPRING_PROFILES_ACTIVE: dev
+        SPRING_DATASOURCE_USERNAME: postgres
+        SPRING_DATASOURCE_PASSWORD: "123456"
+      ports:
+        - "8080:8080"
 
   backoffice:
     build:
