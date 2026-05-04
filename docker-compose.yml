@@ -47,16 +47,16 @@ services:
     ports:
       - "80:80" # App principal (Administración)
 
-  portal:
+portal:
     build:
-      context: . # Para que Docker vea la carpeta /builds/portal que subes por SCP
-      dockerfile: ./reparasuite-portal/Dockerfile
+      context: ./reparasuite-portal  
+      dockerfile: Dockerfile
     container_name: reparasuite-portal
     restart: always
     depends_on:
       - api
     ports:
-      - "4300:80" # Portal de clientes
+      - "4300:80" # Puerto para el portal (Angular)
 
 volumes:
   reparasuite_db_data:
