@@ -29,6 +29,7 @@ services:
     environment:
       # Le decimos a Spring que use el archivo application-prod.properties
       SPRING_PROFILES_ACTIVE: prod
+      SPRING_JPA_HIBERNATE_DDL_AUTO: update
       # Inyectamos las variables desde el archivo .env
       REPARASUITE_DB_URL: ${REPARASUITE_DB_URL}
       REPARASUITE_DB_USERNAME: ${REPARASUITE_DB_USERNAME}
