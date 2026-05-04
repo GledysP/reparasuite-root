@@ -47,7 +47,7 @@ services:
     ports:
       - "80:80" # App principal (Administración)
 
-portal:
+  portal:
     build:
       context: ./reparasuite-portal  
       dockerfile: Dockerfile
