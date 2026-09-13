@@ -1,31 +1,40 @@
 services:
+
   db:
     image: postgres:16-alpine
     container_name: reparasuite-db
     restart: always
+
     environment:
       POSTGRES_DB: ${POSTGRES_DB}
       POSTGRES_USER: ${POSTGRES_USER}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+
     ports:
       - "5432:5432"
+
     volumes:
       - reparasuite_db_data:/var/lib/postgresql/data
+
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
       interval: 5s
       timeout: 3s
       retries: 20
 
+
   api:
     build:
       context: ./reparasuite-api
       dockerfile: Dockerfile
+
     container_name: reparasuite-api
     restart: always
+
     depends_on:
       db:
         condition: service_healthy
+
     environment:
       SPRING_PROFILES_ACTIVE: prod
       REPARASUITE_DB_URL: ${REPARASUITE_DB_URL}
@@ -33,30 +42,44 @@ services:
       REPARASUITE_DB_PASSWORD: ${REPARASUITE_DB_PASSWORD}
       REPARASUITE_JWT_SECRET: ${REPARASUITE_JWT_SECRET}
       REPARASUITE_CORS_ALLOWED_ORIGIN_PATTERNS: ${REPARASUITE_CORS_ALLOWED_ORIGIN_PATTERNS}
+
     ports:
-      - "8080:8080" # Necesario para que el navegador externo llegue a la API
+      - "8080:8080"
+
+    volumes:
+      - reparasuite_uploads:/app/uploads
+
 
   backoffice:
     build:
       context: ./reparasuite-backoffice
       dockerfile: Dockerfile
+
     container_name: reparasuite-backoffice
     restart: always
+
     depends_on:
       - api
+
     ports:
-      - "80:80" # App principal (Administración)
+      - "80:80"
+
 
   portal:
     build:
-      context: ./reparasuite-portal  
+      context: ./reparasuite-portal
       dockerfile: Dockerfile
+
     container_name: reparasuite-portal
     restart: always
+
     depends_on:
       - api
+
     ports:
-      - "4300:80" # Puerto para el portal (Angular)
+      - "4300:80"
+
 
 volumes:
   reparasuite_db_data:
+  reparasuite_uploads:
